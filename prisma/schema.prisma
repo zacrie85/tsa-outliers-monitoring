@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String   @id @default(cuid())
+  username   String   @unique
+  name       String
+  password   String
+  role       String   @default("EDITOR") // ADMIN or EDITOR
+  divisionId String?
+  division   Division? @relation(fields: [divisionId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  logs       AuditLog[]
+}
+
+model Division {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#6366f1")
+  users     User[]
+  columns   CustomColumn[]
+  createdAt DateTime @default(now())
+}
+
+model MonitoringRow {
+  id              String   @id @default(cuid())
+  orderNum        Int
+  categoryBak     String   @default("")
+  provinsi        String   @default("")
+  kabupaten       String   @default("")
+  kecamatan       String   @default("")
+  kelurahan       String   @default("")
+  kelRwSiteName   String   @default("")
+  desaPerum       String   @default("")
+  indexNum        Int      @default(0)
+  homepass        Int      @default(0)
+  odp             Int      @default(0)
+  remarksTsa      String   @default("")
+  klasifikasiTsa  String   @default("")
+  picTsa          String   @default("")
+  remarksJlm      String   @default("")
+  customData      String   @default("{}") // JSON string for custom column values
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model CustomColumn {
+  id         String   @id @default(cuid())
+  name       String   // Internal key name
+  label      String   // Display label
+  order      Int      @default(0)
+  isLocked   Boolean  @default(false)
+  divisionId String?
+  division   Division? @relation(fields: [divisionId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  userName  String
+  action    String   // CELL_EDIT, ROW_ADD, ROW_DELETE, COL_ADD, COL_DELETE, COL_LOCK, COL_UNLOCK, LOGIN
+  tableName String   @default("MonitoringRow")
+  rowId     String?
+  colKey    String?
+  colLabel  String?
+  oldValue  String?
+  newValue  String?
+  timestamp DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model ChartConfig {
+  id         String @id @default(cuid())
+  title      String @default("Chart")
+  chartType  String @default("bar") // bar, line, pie, area, scatter, radar, treemap, funnel
+  config     String @default("{}") // JSON: { xAxis, yAxis, aggregation, filters }
+  order      Int    @default(0)
+}

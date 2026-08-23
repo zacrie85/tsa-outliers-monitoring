@@ -1,0 +1,327 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: #1a1a2e;
+  --foreground: #e8eaf6;
+  --card: rgba(255, 255, 255, 0.08);
+  --card-foreground: #e8eaf6;
+  --popover: rgba(20, 20, 50, 0.95);
+  --popover-foreground: #e8eaf6;
+  --primary: #64b5f6;
+  --primary-foreground: #0d1b2a;
+  --secondary: rgba(255, 255, 255, 0.12);
+  --secondary-foreground: #e8eaf6;
+  --muted: rgba(255, 255, 255, 0.06);
+  --muted-foreground: #90a4ae;
+  --accent: rgba(100, 181, 246, 0.15);
+  --accent-foreground: #e8eaf6;
+  --destructive: #ef5350;
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #64b5f6;
+  --chart-1: #64b5f6;
+  --chart-2: #81c784;
+  --chart-3: #ffb74d;
+  --chart-4: #e57373;
+  --chart-5: #ba68c8;
+  --sidebar: rgba(15, 15, 40, 0.85);
+  --sidebar-foreground: #e8eaf6;
+  --sidebar-primary: #64b5f6;
+  --sidebar-primary-foreground: #0d1b2a;
+  --sidebar-accent: rgba(100, 181, 246, 0.15);
+  --sidebar-accent-foreground: #e8eaf6;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #64b5f6;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+}
+
+/* Windows 7 Aero Glass Background */
+.aero-bg {
+  background: linear-gradient(135deg, #0f0f2d 0%, #1a1a3e 25%, #16213e 50%, #0f3460 75%, #1a1a2e 100%);
+  position: relative;
+}
+
+.aero-bg::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(ellipse at 20% 20%, rgba(100, 181, 246, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(129, 199, 132, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(186, 104, 200, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Glassmorphism Card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+}
+
+.glass-card-hover:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 0 20px rgba(100, 181, 246, 0.08);
+}
+
+/* Glass Nav Bar (like Win7 taskbar) */
+.glass-nav {
+  background: rgba(15, 15, 40, 0.75);
+  backdrop-filter: blur(30px) saturate(200%);
+  -webkit-backdrop-filter: blur(30px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* Glass Sidebar */
+.glass-sidebar {
+  background: rgba(15, 15, 40, 0.7);
+  backdrop-filter: blur(25px) saturate(180%);
+  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Glass Input */
+.glass-input {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e8eaf6;
+  transition: all 0.2s ease;
+}
+.glass-input:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(100, 181, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(100, 181, 246, 0.15);
+  outline: none;
+}
+.glass-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* Glass Button */
+.glass-btn {
+  background: linear-gradient(135deg, rgba(100, 181, 246, 0.25) 0%, rgba(100, 181, 246, 0.1) 100%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(100, 181, 246, 0.3);
+  color: #e8eaf6;
+  transition: all 0.2s ease;
+}
+.glass-btn:hover {
+  background: linear-gradient(135deg, rgba(100, 181, 246, 0.35) 0%, rgba(100, 181, 246, 0.2) 100%);
+  border-color: rgba(100, 181, 246, 0.5);
+  box-shadow: 0 4px 15px rgba(100, 181, 246, 0.2);
+}
+.glass-btn:active {
+  background: linear-gradient(135deg, rgba(100, 181, 246, 0.4) 0%, rgba(100, 181, 246, 0.25) 100%);
+  transform: translateY(1px);
+}
+
+/* Glass Button Destructive */
+.glass-btn-destructive {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.25) 0%, rgba(239, 83, 80, 0.1) 100%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(239, 83, 80, 0.3);
+  color: #ffcdd2;
+  transition: all 0.2s ease;
+}
+.glass-btn-destructive:hover {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.35) 0%, rgba(239, 83, 80, 0.2) 100%);
+  border-color: rgba(239, 83, 80, 0.5);
+  box-shadow: 0 4px 15px rgba(239, 83, 80, 0.2);
+}
+
+/* Glass Button Success */
+.glass-btn-success {
+  background: linear-gradient(135deg, rgba(129, 199, 132, 0.25) 0%, rgba(129, 199, 132, 0.1) 100%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(129, 199, 132, 0.3);
+  color: #c8e6c9;
+  transition: all 0.2s ease;
+}
+.glass-btn-success:hover {
+  background: linear-gradient(135deg, rgba(129, 199, 132, 0.35) 0%, rgba(129, 199, 132, 0.2) 100%);
+  border-color: rgba(129, 199, 132, 0.5);
+  box-shadow: 0 4px 15px rgba(129, 199, 132, 0.2);
+}
+
+/* Table Styles */
+.aero-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.aero-table thead th {
+  background: rgba(100, 181, 246, 0.12);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(100, 181, 246, 0.2);
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #90caf9;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.aero-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.aero-table tbody tr:hover {
+  background: rgba(100, 181, 246, 0.06);
+}
+
+.aero-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.aero-table tbody tr:nth-child(even):hover {
+  background: rgba(100, 181, 246, 0.06);
+}
+
+.aero-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.8rem;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Editable cell */
+.editable-cell {
+  cursor: text;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  min-height: 28px;
+}
+.editable-cell:hover {
+  background: rgba(100, 181, 246, 0.1);
+}
+.editable-cell:focus {
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.3);
+}
+
+/* Locked cell indicator */
+.locked-cell {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Scrollbar */
+.aero-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.aero-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+.aero-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100, 181, 246, 0.25);
+  border-radius: 4px;
+  border: 1px solid rgba(100, 181, 246, 0.1);
+}
+.aero-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 181, 246, 0.4);
+}
+
+/* Win7 Title Bar Glow */
+.win7-glow {
+  box-shadow: 
+    0 0 15px rgba(100, 181, 246, 0.15),
+    0 0 30px rgba(100, 181, 246, 0.05);
+}
+
+/* Tab active indicator */
+.tab-active {
+  background: rgba(100, 181, 246, 0.2);
+  border-bottom: 2px solid #64b5f6;
+  color: #e3f2fd;
+}
+
+/* Badge styles */
+.badge-locked {
+  background: rgba(239, 83, 80, 0.2);
+  border: 1px solid rgba(239, 83, 80, 0.3);
+  color: #ef9a9a;
+}
+.badge-division {
+  border: 1px solid;
+}
