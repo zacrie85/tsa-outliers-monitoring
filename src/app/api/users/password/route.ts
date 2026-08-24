@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireAdmin } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import * as crypto from 'crypto';
 
 function hashPassword(password: string): string {
@@ -9,7 +9,7 @@ function hashPassword(password: string): string {
 
 export async function PUT(request: NextRequest) {
   try {
-    await requireAdmin();
+    await requireAuth();
     const { userId, newPassword } = await request.json();
 
     if (!userId || !newPassword || newPassword.length < 4) {
@@ -24,7 +24,6 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     if (error.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Tidak terautentikasi' }, { status: 401 });
-    if (error.message === 'FORBIDDEN') return NextResponse.json({ error: 'Hanya admin' }, { status: 403 });
     return NextResponse.json({ error: 'Gagal mengubah password' }, { status: 500 });
   }
 }

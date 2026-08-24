@@ -12,7 +12,7 @@ export interface SessionUser {
 interface AppState {
   user: SessionUser | null;
   setUser: (user: SessionUser | null) => void;
-  activeTab: 'monitoring' | 'logs' | 'dashboard' | 'admin';
+  activeTab: 'monitoring' | 'logs' | 'dashboard' | 'admin' | 'settings';
   setActiveTab: (tab: AppState['activeTab']) => void;
 }
 

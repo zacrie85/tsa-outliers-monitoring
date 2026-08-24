@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -12,7 +12,7 @@ model User {
   username   String   @unique
   name       String
   password   String
-  role       String   @default("EDITOR") // ADMIN or EDITOR
+  role       String   @default("EDITOR") // ADMIN, EDITOR, or VIEWER
   divisionId String?
   division   Division? @relation(fields: [divisionId], references: [id])
   createdAt  DateTime @default(now())
@@ -78,9 +78,9 @@ model AuditLog {
 }
 
 model ChartConfig {
-  id         String @id @default(cuid())
-  title      String @default("Chart")
-  chartType  String @default("bar") // bar, line, pie, area, scatter, radar, treemap, funnel
-  config     String @default("{}") // JSON: { xAxis, yAxis, aggregation, filters }
-  order      Int    @default(0)
+  id        String @id @default(cuid())
+  title     String @default("Chart")
+  chartType String @default("bar") // bar, line, pie, area, scatter, radar, treemap, funnel
+  config    String @default("{}") // JSON: { xAxis, yAxis, aggregation, filters }
+  order     Int    @default(0)
 }
