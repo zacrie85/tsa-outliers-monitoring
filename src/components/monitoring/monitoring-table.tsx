@@ -576,7 +576,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
         <div
           ref={tableBodyRef}
           onScroll={updateScrollInfo}
-          className="flex-1 overflow-auto aero-scroll"
+          className="overflow-auto aero-scroll"
           style={{ maxHeight: 'calc(20 * 2.4rem + 2.6rem)' }}
         >
           <table className="aero-table">
