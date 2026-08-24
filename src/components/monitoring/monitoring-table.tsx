@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAppStore } from '@/store/app-store';
 import {
   Plus, Trash2, Search, Lock, Unlock, Settings,
-  Download, X, Save, FileSpreadsheet, MapPin, ChevronDown, ChevronRight
+  Download, X, Save, FileSpreadsheet, MapPin, ChevronDown, ChevronRight,
+  Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown
 } from 'lucide-react';
 
 const BASE_COLUMNS = [
@@ -69,9 +70,30 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const [newColDivision, setNewColDivision] = useState('');
   const [showAddRow, setShowAddRow] = useState(false);
   const [newRow, setNewRow] = useState<any>({});
+
+  // Column filter & sort state
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
+  const [activeFilterCol, setActiveFilterCol] = useState<string | null>(null);
+  const [filterSearch, setFilterSearch] = useState('');
+  const [tempFilterValues, setTempFilterValues] = useState<string[]>([]);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
   const editRef = useRef<HTMLInputElement>(null);
   const tableBodyRef = useRef<HTMLDivElement>(null);
   const [scrollInfo, setScrollInfo] = useState({ top: false, bottom: true, left: false, right: true });
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close filter dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(e.target as Node)) {
+        setActiveFilterCol(null);
+        setFilterSearch('');
+      }
+    };
+    if (activeFilterCol) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [activeFilterCol]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -113,28 +135,19 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const handleCellSave = async (rowId: string, colKey: string, value: string) => {
     const col = customCols.find(c => c.id === colKey);
     const isCustom = !!col;
-
     try {
       const res = await fetch('/api/monitoring/cells', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          rowId,
-          colKey,
-          value,
+          rowId, colKey, value,
           colLabel: col?.label || BASE_COLUMNS.find(c => c.key === colKey)?.label,
           isCustomCol: isCustom,
           isLocked: col?.isLocked || false,
           colDivisionId: col?.divisionId || null,
         }),
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        alert(data.error);
-        return;
-      }
-
+      if (!res.ok) { const data = await res.json(); alert(data.error); return; }
       setRows(prev => prev.map(r => {
         if (r.id !== rowId) return r;
         if (isCustom) {
@@ -150,9 +163,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
         }
         return update;
       }));
-    } catch (err) {
-      console.error('Save error:', err);
-    }
+    } catch (err) { console.error('Save error:', err); }
     setEditingCell(null);
   };
 
@@ -168,15 +179,8 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           divisionId: newColDivision || null,
         }),
       });
-      if (res.ok) {
-        setNewColName('');
-        setNewColLabel('');
-        setNewColDivision('');
-        fetchData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
+      if (res.ok) { setNewColName(''); setNewColLabel(''); setNewColDivision(''); fetchData(); }
+    } catch (err) { console.error(err); }
   };
 
   const handleToggleLock = async (col: CustomColumn) => {
@@ -184,18 +188,10 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
       await fetch('/api/columns', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: col.id,
-          label: col.label,
-          divisionId: col.divisionId,
-          isLocked: !col.isLocked,
-          order: col.order,
-        }),
+        body: JSON.stringify({ id: col.id, label: col.label, divisionId: col.divisionId, isLocked: !col.isLocked, order: col.order }),
       });
       fetchData();
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const handleDeleteColumn = async (colId: string) => {
@@ -203,9 +199,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     try {
       await fetch(`/api/columns?id=${colId}`, { method: 'DELETE' });
       fetchData();
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const handleAddRow = async () => {
@@ -215,14 +209,8 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRow),
       });
-      if (res.ok) {
-        setNewRow({});
-        setShowAddRow(false);
-        fetchData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
+      if (res.ok) { setNewRow({}); setShowAddRow(false); fetchData(); }
+    } catch (err) { console.error(err); }
   };
 
   const handleDeleteRow = async (rowId: string) => {
@@ -230,9 +218,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     try {
       await fetch(`/api/monitoring/rows/${rowId}`, { method: 'DELETE' });
       fetchData();
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const getCellValue = (row: MonitoringRow, colKey: string) => {
@@ -247,41 +233,114 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     return divisions.find(d => d.id === divId)?.color || '#90a4ae';
   };
 
-  const filteredRows = rows.filter(row => {
-    if (!search) return true;
+  // --- FILTER & SORT LOGIC ---
+
+  const getUniqueValues = useCallback((colKey: string): string[] => {
+    const vals = new Set<string>();
+    for (const row of rows) {
+      const v = getCellValue(row, colKey);
+      if (v) vals.add(v);
+    }
+    return Array.from(vals).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  }, [rows]);
+
+  const openFilter = (colKey: string) => {
+    setActiveFilterCol(colKey);
+    setFilterSearch('');
+    setTempFilterValues(columnFilters[colKey] || getUniqueValues(colKey));
+  };
+
+  const applyFilter = () => {
+    if (!activeFilterCol) return;
+    const allVals = getUniqueValues(activeFilterCol);
+    if (tempFilterValues.length === allVals.length) {
+      setColumnFilters(prev => { const n = { ...prev }; delete n[activeFilterCol]; return n; });
+    } else {
+      setColumnFilters(prev => ({ ...prev, [activeFilterCol]: tempFilterValues }));
+    }
+    setActiveFilterCol(null);
+    setFilterSearch('');
+  };
+
+  const clearFilter = (colKey: string) => {
+    setColumnFilters(prev => { const n = { ...prev }; delete n[colKey]; return n; });
+    if (sortConfig?.key === colKey) setSortConfig(null);
+    setActiveFilterCol(null);
+  };
+
+  const toggleSort = (colKey: string) => {
+    setSortConfig(prev => {
+      if (prev?.key !== colKey) return { key: colKey, direction: 'asc' };
+      if (prev.direction === 'asc') return { key: colKey, direction: 'desc' };
+      return null;
+    });
+  };
+
+  const toggleTempValue = (val: string) => {
+    setTempFilterValues(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]);
+  };
+
+  const toggleSelectAll = (allVals: string[]) => {
+    setTempFilterValues(prev => prev.length === allVals.length ? [] : [...allVals]);
+  };
+
+  // Search filter
+  const searchedRows = useMemo(() => {
+    if (!search) return rows;
     const s = search.toLowerCase();
-    return [
-      row.provinsi, row.kabupaten, row.kecamatan, row.kelurahan,
-      row.kelRwSiteName, row.desaPerum, row.remarksTsa, row.klasifikasiTsa,
-      row.picTsa, row.remarksJlm, row.customData,
-    ].some(v => String(v).toLowerCase().includes(s));
-  });
+    return rows.filter(row =>
+      [row.provinsi, row.kabupaten, row.kecamatan, row.kelurahan,
+        row.kelRwSiteName, row.desaPerum, row.remarksTsa, row.klasifikasiTsa,
+        row.picTsa, row.remarksJlm, row.customData,
+      ].some(v => String(v).toLowerCase().includes(s))
+    );
+  }, [rows, search]);
+
+  // Column filters
+  const filteredRows = useMemo(() => {
+    let result = searchedRows;
+    for (const [colKey, allowedVals] of Object.entries(columnFilters)) {
+      result = result.filter(row => allowedVals.includes(getCellValue(row, colKey)));
+    }
+    return result;
+  }, [searchedRows, columnFilters]);
+
+  // Sort
+  const displayRows = useMemo(() => {
+    if (!sortConfig) return filteredRows;
+    const sorted = [...filteredRows];
+    sorted.sort((a, b) => {
+      const va = getCellValue(a, sortConfig.key);
+      const vb = getCellValue(b, sortConfig.key);
+      const na = parseFloat(va); const nb = parseFloat(vb);
+      if (!isNaN(na) && !isNaN(nb)) return sortConfig.direction === 'asc' ? na - nb : nb - na;
+      return sortConfig.direction === 'asc'
+        ? va.localeCompare(vb, undefined, { numeric: true, sensitivity: 'base' })
+        : vb.localeCompare(va, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    return sorted;
+  }, [filteredRows, sortConfig]);
+
+  const activeFilterCount = Object.keys(columnFilters).length;
 
   const updateScrollInfo = () => {
     const el = tableBodyRef.current;
     if (!el) return;
     const { scrollTop, scrollHeight, clientHeight, scrollLeft, scrollWidth, clientWidth } = el;
     setScrollInfo({
-      top: scrollTop > 5,
-      bottom: scrollTop + clientHeight < scrollHeight - 5,
-      left: scrollLeft > 5,
-      right: scrollLeft + clientWidth < scrollWidth - 5,
+      top: scrollTop > 5, bottom: scrollTop + clientHeight < scrollHeight - 5,
+      left: scrollLeft > 5, right: scrollLeft + clientWidth < scrollWidth - 5,
     });
   };
 
   const exportCSV = () => {
     const allCols = [...BASE_COLUMNS, ...customCols.map(c => ({ key: c.id, label: c.label, width: 150, editable: false }))];
     const header = allCols.map(c => `"${c.label}"`).join(',');
-    const csvRows = filteredRows.map(row =>
-      allCols.map(c => `"${getCellValue(row, c.key).replace(/"/g, '""')}"`).join(',')
-    );
+    const csvRows = displayRows.map(row => allCols.map(c => `"${getCellValue(row, c.key).replace(/"/g, '""')}"`).join(','));
     const csv = [header, ...csvRows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'tsa_outliers_monitoring.csv';
-    a.click();
+    const a = document.createElement('a'); a.href = url; a.download = 'tsa_outliers_monitoring.csv'; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -299,8 +358,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     const cleaned = val.replace(/[()\s]/g, '');
     const parts = cleaned.split(',');
     if (parts.length === 2) {
-      const lat = parseFloat(parts[0]);
-      const lng = parseFloat(parts[1]);
+      const lat = parseFloat(parts[0]); const lng = parseFloat(parts[1]);
       if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
     }
     return null;
@@ -309,9 +367,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const exportExcel = async () => {
     const XLSX = await import('xlsx');
     const allCols = getAllColumns();
-    const data = filteredRows.map(row =>
-      allCols.reduce((acc, c) => { acc[c.label] = getCellValue(row, c.key); return acc; }, {} as Record<string, string>)
-    );
+    const data = displayRows.map(row => allCols.reduce((acc, c) => { acc[c.label] = getCellValue(row, c.key); return acc; }, {} as Record<string, string>));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'TSA Outliers');
@@ -324,17 +380,13 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     const allCols = getAllColumns();
     const nameColLabels = allCols.filter(c => kmzNameCols.includes(c.key)).map(c => c.label);
     const descColLabels = allCols.filter(c => kmzDescCols.includes(c.key)).map(c => c.label);
-    let placemarks = '';
-    let count = 0;
-    for (const row of filteredRows) {
+    let placemarks = ''; let count = 0;
+    for (const row of displayRows) {
       const coordVal = getCellValue(row, kmzCoordCol);
       const coord = parseCoord(coordVal);
       if (!coord) continue;
       const nameParts = kmzNameCols.map(k => getCellValue(row, k)).filter(Boolean);
-      const descParts = descColLabels.map((label, i) => {
-        const key = kmzDescCols[i];
-        return '<b>' + label + ':</b> ' + getCellValue(row, key);
-      });
+      const descParts = descColLabels.map((label, i) => { const key = kmzDescCols[i]; return '<b>' + label + ':</b> ' + getCellValue(row, key); });
       placemarks += '<Placemark><name>' + (nameParts.join(' - ') || 'Point ' + (count + 1)) + '</name><description><![CDATA[' + (descParts.join('<br/>') || 'Tidak ada keterangan') + ']]></description><Point><coordinates>' + coord.lng + ',' + coord.lat + ',0</coordinates></Point></Placemark>';
       count++;
     }
@@ -344,9 +396,68 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     zip.file('doc.kml', kml);
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'tsa_outliers.kmz'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = 'tsa_outliers.kmz'; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // --- FILTER DROPDOWN COMPONENT ---
+  const FilterDropdown = ({ colKey, colLabel }: { colKey: string; colLabel: string }) => {
+    if (activeFilterCol !== colKey) return null;
+    const allVals = getUniqueValues(colKey);
+    const filteredVals = filterSearch ? allVals.filter(v => v.toLowerCase().includes(filterSearch.toLowerCase())) : allVals;
+    const allSelected = tempFilterValues.length === allVals.length;
+    const hasFilter = columnFilters[colKey] !== undefined;
+    const sortDir = sortConfig?.key === colKey ? sortConfig.direction : null;
+
+    return (
+      <div ref={filterDropdownRef} className="absolute top-full left-0 mt-1 w-64 rounded-lg shadow-2xl z-50 border border-white/15"
+        style={{ background: 'rgba(13, 27, 42, 0.97)', backdropFilter: 'blur(20px)' }}>
+        {/* Sort */}
+        <div className="p-1.5 border-b border-white/10 flex flex-col gap-0.5">
+          <button onClick={() => toggleSort(colKey)}
+            className={'flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors w-full text-left ' + (sortDir === 'asc' ? 'bg-[#64b5f6]/20 text-[#64b5f6]' : 'text-[#b0bec5] hover:bg-white/10 hover:text-white')}>
+            <ArrowUp className="w-3.5 h-3.5" /> Sort A to Z {sortDir === 'asc' && <Check className="w-3 h-3 ml-auto" />}
+          </button>
+          <button onClick={() => toggleSort(colKey)}
+            className={'flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors w-full text-left ' + (sortDir === 'desc' ? 'bg-[#64b5f6]/20 text-[#64b5f6]' : 'text-[#b0bec5] hover:bg-white/10 hover:text-white')}>
+            <ArrowDown className="w-3.5 h-3.5" /> Sort Z to A {sortDir === 'desc' && <Check className="w-3 h-3 ml-auto" />}
+          </button>
+        </div>
+        {hasFilter && (
+          <button onClick={() => clearFilter(colKey)}
+            className="flex items-center gap-2 px-3 py-2 text-xs text-[#ef9a9a] hover:bg-[#ef5350]/10 border-b border-white/10 w-full text-left">
+            <X className="w-3.5 h-3.5" /> Hapus Filter dari &apos;{colLabel}&apos;
+          </button>
+        )}
+        {/* Search */}
+        <div className="p-2 border-b border-white/10">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#546e7a]" />
+            <input type="text" value={filterSearch} onChange={(e) => setFilterSearch(e.target.value)}
+              placeholder="Cari..." className="w-full pl-8 pr-3 py-1.5 glass-input rounded-md text-xs" autoFocus />
+          </div>
+        </div>
+        {/* Checkboxes */}
+        <div className="max-h-48 overflow-y-auto aero-scroll p-1.5">
+          <label className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/5 cursor-pointer text-xs">
+            <input type="checkbox" checked={allSelected} onChange={() => toggleSelectAll(allVals)} className="rounded border-white/20 bg-white/5" />
+            <span className="text-[#90caf9] font-medium">(Pilih Semua)</span>
+          </label>
+          {filteredVals.map(val => (
+            <label key={val} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/5 cursor-pointer text-xs">
+              <input type="checkbox" checked={tempFilterValues.includes(val)} onChange={() => toggleTempValue(val)} className="rounded border-white/20 bg-white/5" />
+              <span className="text-[#b0bec5] truncate" title={val}>{val}</span>
+            </label>
+          ))}
+          {filteredVals.length === 0 && <p className="text-xs text-[#546e7a] text-center py-3">Tidak ditemukan</p>}
+        </div>
+        {/* OK / Cancel */}
+        <div className="flex items-center justify-end gap-2 p-2 border-t border-white/10">
+          <button onClick={() => { setActiveFilterCol(null); setFilterSearch(''); }} className="px-3 py-1.5 rounded-md text-xs text-[#78909c] hover:bg-white/5 hover:text-white transition-colors">Batal</button>
+          <button onClick={applyFilter} className="px-3 py-1.5 rounded-md text-xs glass-btn">OK</button>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -359,19 +470,14 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               <MapPin className="w-5 h-5 text-[#ffb74d]" />
               <h3 className="text-sm font-semibold text-[#e3f2fd]">Export KMZ</h3>
             </div>
-            <button onClick={() => setShowKmzDialog(false)} className="text-[#546e7a] hover:text-white">
-              <X className="w-4 h-4" />
-            </button>
+            <button onClick={() => setShowKmzDialog(false)} className="text-[#546e7a] hover:text-white"><X className="w-4 h-4" /></button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="block text-xs text-[#78909c] mb-1">Kolom Koordinat <span className="text-[#ef5350]">*</span></label>
-              <select value={kmzCoordCol} onChange={(e) => setKmzCoordCol(e.target.value)}
-                className="w-full px-3 py-2 glass-input rounded-lg text-sm">
+              <select value={kmzCoordCol} onChange={(e) => setKmzCoordCol(e.target.value)} className="w-full px-3 py-2 glass-input rounded-lg text-sm">
                 <option value="" style={{ background: '#1a1a2e' }}>-- Pilih Kolom --</option>
-                {getAllColumns().map(c => (
-                  <option key={c.key} value={c.key} style={{ background: '#1a1a2e' }}>{c.label}</option>
-                ))}
+                {getAllColumns().map(c => (<option key={c.key} value={c.key} style={{ background: '#1a1a2e' }}>{c.label}</option>))}
               </select>
               <p className="text-[10px] text-[#546e7a] mt-1">Format: (-6.994292,110.429400)</p>
             </div>
@@ -380,10 +486,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               <div className="max-h-28 overflow-y-auto aero-scroll space-y-1 p-2 rounded-lg bg-white/5">
                 {getAllColumns().map(c => (
                   <label key={c.key} className="flex items-center gap-2 text-xs cursor-pointer">
-                    <input type="checkbox" checked={kmzNameCols.includes(c.key)}
-                      onChange={(e) => setKmzNameCols(prev =>
-                        e.target.checked ? [...prev, c.key] : prev.filter(k => k !== c.key)
-                      )} className="rounded" />
+                    <input type="checkbox" checked={kmzNameCols.includes(c.key)} onChange={(e) => setKmzNameCols(prev => e.target.checked ? [...prev, c.key] : prev.filter(k => k !== c.key))} className="rounded" />
                     <span className="text-[#b0bec5]">{c.label}</span>
                   </label>
                 ))}
@@ -394,19 +497,14 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               <div className="max-h-28 overflow-y-auto aero-scroll space-y-1 p-2 rounded-lg bg-white/5">
                 {getAllColumns().map(c => (
                   <label key={c.key} className="flex items-center gap-2 text-xs cursor-pointer">
-                    <input type="checkbox" checked={kmzDescCols.includes(c.key)}
-                      onChange={(e) => setKmzDescCols(prev =>
-                        e.target.checked ? [...prev, c.key] : prev.filter(k => k !== c.key)
-                      )} className="rounded" />
+                    <input type="checkbox" checked={kmzDescCols.includes(c.key)} onChange={(e) => setKmzDescCols(prev => e.target.checked ? [...prev, c.key] : prev.filter(k => k !== c.key))} className="rounded" />
                     <span className="text-[#b0bec5]">{c.label}</span>
                   </label>
                 ))}
               </div>
             </div>
           </div>
-          <button onClick={exportKmz} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
-            <MapPin className="w-4 h-4" /> Download KMZ
-          </button>
+          <button onClick={exportKmz} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><MapPin className="w-4 h-4" /> Download KMZ</button>
         </div>
       )}
 
@@ -414,75 +512,46 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
       <div className="glass-card rounded-xl p-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#546e7a]" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari data..."
-            className="w-full pl-10 pr-4 py-2.5 glass-input rounded-lg text-sm"
-          />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari data..." className="w-full pl-10 pr-4 py-2.5 glass-input rounded-lg text-sm" />
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={exportExcel} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
-            <FileSpreadsheet className="w-4 h-4" /> Export Excel
-          </button>
-          <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
-            <Download className="w-4 h-4" /> Export CSV
-          </button>
-          <button onClick={() => setShowKmzDialog(!showKmzDialog)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
-            <MapPin className="w-4 h-4" /> Export KMZ
-          </button>
+          <button onClick={exportExcel} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><FileSpreadsheet className="w-4 h-4" /> Export Excel</button>
+          <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><Download className="w-4 h-4" /> Export CSV</button>
+          <button onClick={() => setShowKmzDialog(!showKmzDialog)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><MapPin className="w-4 h-4" /> Export KMZ</button>
           {!viewer && user?.role === 'ADMIN' && (
             <>
-              <button onClick={() => setShowColManager(!showColManager)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
-                <Settings className="w-4 h-4" /> Kelola Kolom
-              </button>
-              <button onClick={() => setShowAddRow(!showAddRow)} className="flex items-center gap-2 px-4 py-2.5 glass-btn-success rounded-lg text-sm">
-                <Plus className="w-4 h-4" /> Tambah Baris
-              </button>
+              <button onClick={() => setShowColManager(!showColManager)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><Settings className="w-4 h-4" /> Kelola Kolom</button>
+              <button onClick={() => setShowAddRow(!showAddRow)} className="flex items-center gap-2 px-4 py-2.5 glass-btn-success rounded-lg text-sm"><Plus className="w-4 h-4" /> Tambah Baris</button>
             </>
           )}
         </div>
       </div>
 
-      {/* Column Manager Panel */}
+      {/* Column Manager */}
       {showColManager && user?.role === 'ADMIN' && (
         <div className="glass-card rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-[#e3f2fd]">Kelola Kolom Kustom</h3>
-            <button onClick={() => setShowColManager(false)} className="text-[#546e7a] hover:text-white">
-              <X className="w-4 h-4" />
-            </button>
+            <button onClick={() => setShowColManager(false)} className="text-[#546e7a] hover:text-white"><X className="w-4 h-4" /></button>
           </div>
-
-          {/* Add column form */}
           <div className="flex flex-wrap items-end gap-3 mb-5 p-4 rounded-lg bg-white/5">
             <div className="flex-1 min-w-[140px]">
               <label className="block text-xs text-[#78909c] mb-1">Nama Kolom (Key)</label>
-              <input value={newColName} onChange={(e) => setNewColName(e.target.value)}
-                className="w-full px-3 py-2 glass-input rounded-lg text-sm" placeholder="progress_status" />
+              <input value={newColName} onChange={(e) => setNewColName(e.target.value)} className="w-full px-3 py-2 glass-input rounded-lg text-sm" placeholder="progress_status" />
             </div>
             <div className="flex-1 min-w-[140px]">
               <label className="block text-xs text-[#78909c] mb-1">Label Tampilan</label>
-              <input value={newColLabel} onChange={(e) => setNewColLabel(e.target.value)}
-                className="w-full px-3 py-2 glass-input rounded-lg text-sm" placeholder="Progress Status" />
+              <input value={newColLabel} onChange={(e) => setNewColLabel(e.target.value)} className="w-full px-3 py-2 glass-input rounded-lg text-sm" placeholder="Progress Status" />
             </div>
             <div className="flex-1 min-w-[140px]">
               <label className="block text-xs text-[#78909c] mb-1">Divisi</label>
-              <select value={newColDivision} onChange={(e) => setNewColDivision(e.target.value)}
-                className="w-full px-3 py-2 glass-input rounded-lg text-sm">
+              <select value={newColDivision} onChange={(e) => setNewColDivision(e.target.value)} className="w-full px-3 py-2 glass-input rounded-lg text-sm">
                 <option value="">Tanpa Divisi (Admin Only)</option>
-                {divisions.map(d => (
-                  <option key={d.id} value={d.id} style={{ background: '#1a1a2e' }}>{d.name}</option>
-                ))}
+                {divisions.map(d => (<option key={d.id} value={d.id} style={{ background: '#1a1a2e' }}>{d.name}</option>))}
               </select>
             </div>
-            <button onClick={handleAddColumn} className="flex items-center gap-2 px-4 py-2 glass-btn rounded-lg text-sm">
-              <Plus className="w-4 h-4" /> Tambah
-            </button>
+            <button onClick={handleAddColumn} className="flex items-center gap-2 px-4 py-2 glass-btn rounded-lg text-sm"><Plus className="w-4 h-4" /> Tambah</button>
           </div>
-
-          {/* Existing custom columns */}
           {customCols.length === 0 ? (
             <p className="text-sm text-[#546e7a] text-center py-4">Belum ada kolom kustom</p>
           ) : (
@@ -490,32 +559,14 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               {customCols.map(col => (
                 <div key={col.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 group">
                   <div className="flex items-center gap-3">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: getDivisionColor(col.divisionId) }}
-                    />
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getDivisionColor(col.divisionId) }} />
                     <span className="text-sm text-[#e0e0e0]">{col.label}</span>
-                    {col.division && (
-                      <span
-                        className="text-[10px] px-2 py-0.5 rounded-full badge-division"
-                        style={{ borderColor: col.division.color, color: col.division.color, backgroundColor: col.division.color + '15' }}
-                      >
-                        {col.division.name}
-                      </span>
-                    )}
-                    {col.isLocked && (
-                      <span className="badge-locked text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <Lock className="w-3 h-3" /> Terkunci
-                      </span>
-                    )}
+                    {col.division && (<span className="text-[10px] px-2 py-0.5 rounded-full badge-division" style={{ borderColor: col.division.color, color: col.division.color, backgroundColor: col.division.color + '15' }}>{col.division.name}</span>)}
+                    {col.isLocked && (<span className="badge-locked text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"><Lock className="w-3 h-3" /> Terkunci</span>)}
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => handleToggleLock(col)} className="p-1.5 rounded-md hover:bg-white/10 text-[#78909c] hover:text-white">
-                      {col.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                    </button>
-                    <button onClick={() => handleDeleteColumn(col.id)} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#78909c] hover:text-[#ef5350]">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <button onClick={() => handleToggleLock(col)} className="p-1.5 rounded-md hover:bg-white/10 text-[#78909c] hover:text-white">{col.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}</button>
+                    <button onClick={() => handleDeleteColumn(col.id)} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#78909c] hover:text-[#ef5350]"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
               ))}
@@ -530,24 +581,15 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-[#e3f2fd]">Tambah Baris Baru</h3>
             <div className="flex gap-2">
-              <button onClick={handleAddRow} className="flex items-center gap-1 px-3 py-1.5 glass-btn-success rounded-lg text-xs">
-                <Save className="w-3.5 h-3.5" /> Simpan
-              </button>
-              <button onClick={() => { setShowAddRow(false); setNewRow({}); }} className="p-1.5 rounded-md hover:bg-white/10 text-[#546e7a]">
-                <X className="w-4 h-4" />
-              </button>
+              <button onClick={handleAddRow} className="flex items-center gap-1 px-3 py-1.5 glass-btn-success rounded-lg text-xs"><Save className="w-3.5 h-3.5" /> Simpan</button>
+              <button onClick={() => { setShowAddRow(false); setNewRow({}); }} className="p-1.5 rounded-md hover:bg-white/10 text-[#546e7a]"><X className="w-4 h-4" /></button>
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {BASE_COLUMNS.filter(c => c.key !== 'orderNum').map(col => (
               <div key={col.key}>
                 <label className="block text-[10px] text-[#546e7a] mb-1">{col.label}</label>
-                <input
-                  value={(newRow as any)[col.key] || ''}
-                  onChange={(e) => setNewRow(prev => ({ ...prev, [col.key]: e.target.value }))}
-                  className="w-full px-2.5 py-1.5 glass-input rounded-md text-xs"
-                  placeholder={col.label}
-                />
+                <input value={(newRow as any)[col.key] || ''} onChange={(e) => setNewRow(prev => ({ ...prev, [col.key]: e.target.value }))} className="w-full px-2.5 py-1.5 glass-input rounded-md text-xs" placeholder={col.label} />
               </div>
             ))}
           </div>
@@ -556,7 +598,6 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
 
       {/* Data Table */}
       <div className="glass-card rounded-xl flex-1 flex flex-col overflow-hidden min-h-0 relative">
-        {/* Scroll indicators */}
         {scrollInfo.top && (
           <div className="absolute top-11 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
             <div className="flex flex-col items-center gap-0.5 opacity-40 animate-pulse">
@@ -573,73 +614,78 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
             </div>
           </div>
         )}
-        <div
-          ref={tableBodyRef}
-          onScroll={updateScrollInfo}
+        <div ref={tableBodyRef} onScroll={updateScrollInfo}
           className="overflow-auto aero-scroll"
-          style={{ maxHeight: 'calc(20 * 2.4rem + 2.6rem)' }}
-        >
+          style={{ maxHeight: 'calc(20 * 2.4rem + 2.6rem)' }}>
           <table className="aero-table">
             <thead>
               <tr>
-                {BASE_COLUMNS.map(col => (
-                  <th key={col.key} style={{ minWidth: col.width }}>
-                    <div className="flex items-center gap-1">
-                      {col.label}
-                      {col.editable && user?.role !== 'ADMIN' && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#81c784]" title="Bisa diedit" />
-                      )}
-                    </div>
-                  </th>
-                ))}
-                {customCols.map(col => (
-                  <th key={col.id} style={{ minWidth: 150 }}>
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: getDivisionColor(col.divisionId) }}
-                      />
-                      {col.label}
-                      {col.isLocked && <Lock className="w-3 h-3 text-[#ef9a9a]" />}
-                    </div>
-                  </th>
-                ))}
-                {user?.role === 'ADMIN' && (
-                  <th style={{ minWidth: 50 }}>Aksi</th>
-                )}
+                {BASE_COLUMNS.map(col => {
+                  const hasFilter = columnFilters[col.key] !== undefined;
+                  const sortDir = sortConfig?.key === col.key ? sortConfig.direction : null;
+                  return (
+                    <th key={col.key} style={{ minWidth: col.width }} className="relative group">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openFilter(col.key)} className="flex items-center gap-1 hover:text-white transition-colors">
+                          {sortDir === 'asc' && <ArrowUp className="w-3 h-3 text-[#64b5f6]" />}
+                          {sortDir === 'desc' && <ArrowDown className="w-3 h-3 text-[#64b5f6]" />}
+                          {!sortDir && hasFilter && <Filter className="w-3 h-3 text-[#ffb74d]" />}
+                          {!sortDir && !hasFilter && <ChevronsUpDown className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />}
+                          {col.label}
+                        </button>
+                        {col.editable && user?.role !== 'ADMIN' && (<span className="w-1.5 h-1.5 rounded-full bg-[#81c784]" title="Bisa diedit" />)}
+                        <button onClick={() => openFilter(col.key)} className={'p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all ' + (hasFilter ? '!opacity-100' : '')}>
+                          <ChevronDown className="w-3 h-3 text-[#78909c]" />
+                        </button>
+                      </div>
+                      <FilterDropdown colKey={col.key} colLabel={col.label} />
+                    </th>
+                  );
+                })}
+                {customCols.map(col => {
+                  const hasFilter = columnFilters[col.id] !== undefined;
+                  const sortDir = sortConfig?.key === col.id ? sortConfig.direction : null;
+                  return (
+                    <th key={col.id} style={{ minWidth: 150 }} className="relative group">
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => openFilter(col.id)} className="flex items-center gap-1.5 hover:text-white transition-colors">
+                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: getDivisionColor(col.divisionId) }} />
+                          {sortDir === 'asc' && <ArrowUp className="w-3 h-3 text-[#64b5f6]" />}
+                          {sortDir === 'desc' && <ArrowDown className="w-3 h-3 text-[#64b5f6]" />}
+                          {!sortDir && hasFilter && <Filter className="w-3 h-3 text-[#ffb74d]" />}
+                          {!sortDir && !hasFilter && <ChevronsUpDown className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />}
+                          {col.label}
+                        </button>
+                        {col.isLocked && <Lock className="w-3 h-3 text-[#ef9a9a]" />}
+                        <button onClick={() => openFilter(col.id)} className={'p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all ' + (hasFilter ? '!opacity-100' : '')}>
+                          <ChevronDown className="w-3 h-3 text-[#78909c]" />
+                        </button>
+                      </div>
+                      <FilterDropdown colKey={col.id} colLabel={col.label} />
+                    </th>
+                  );
+                })}
+                {user?.role === 'ADMIN' && (<th style={{ minWidth: 50 }}>Aksi</th>)}
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((row) => (
+              {displayRows.map((row) => (
                 <tr key={row.id}>
                   {BASE_COLUMNS.map(col => {
                     const val = getCellValue(row, col.key);
                     const canEdit = canEditCell(col.key, null);
                     const isEditing = editingCell?.rowId === row.id && editingCell?.colKey === col.key;
-
                     return (
                       <td key={col.key}>
                         {isEditing ? (
-                          <input
-                            ref={editRef}
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
+                          <input ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
                             onBlur={() => handleCellSave(row.id, col.key, editValue)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleCellSave(row.id, col.key, editValue);
-                              if (e.key === 'Escape') setEditingCell(null);
-                            }}
-                            className="w-full px-2 py-1 glass-input rounded text-xs"
-                            style={{ minWidth: col.width - 24 }}
-                          />
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleCellSave(row.id, col.key, editValue); if (e.key === 'Escape') setEditingCell(null); }}
+                            className="w-full px-2 py-1 glass-input rounded text-xs" style={{ minWidth: col.width - 24 }} />
                         ) : (
-                          <div
-                            className={`editable-cell text-xs ${!canEdit ? 'cursor-default' : ''}`}
-                            onClick={() => {
-                              if (canEdit) { setEditingCell({ rowId: row.id, colKey: col.key }); setEditValue(val); }
-                            }}
-                            title={val}
-                          >
+                          <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '')}
+                            onClick={() => { if (canEdit) { setEditingCell({ rowId: row.id, colKey: col.key }); setEditValue(val); } }}
+                            title={val}>
                             {val || <span className="text-[#37474f]">-</span>}
                           </div>
                         )}
@@ -650,31 +696,17 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                     const val = getCellValue(row, col.id);
                     const canEdit = canEditCell(col.id, col);
                     const isEditing = editingCell?.rowId === row.id && editingCell?.colKey === col.id;
-
                     return (
                       <td key={col.id}>
                         {isEditing ? (
-                          <input
-                            ref={editRef}
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
+                          <input ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
                             onBlur={() => handleCellSave(row.id, col.id, editValue)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleCellSave(row.id, col.id, editValue);
-                              if (e.key === 'Escape') setEditingCell(null);
-                            }}
-                            className="w-full px-2 py-1 glass-input rounded text-xs"
-                          />
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleCellSave(row.id, col.id, editValue); if (e.key === 'Escape') setEditingCell(null); }}
+                            className="w-full px-2 py-1 glass-input rounded text-xs" />
                         ) : (
-                          <div
-                            className={`editable-cell text-xs ${!canEdit ? 'cursor-default' : ''} ${col.isLocked ? 'locked-cell' : ''}`}
-                            onClick={() => {
-                              if (!canEdit) return;
-                              setEditingCell({ rowId: row.id, colKey: col.id });
-                              setEditValue(val);
-                            }}
-                            title={col.isLocked ? 'Kolom terkunci' : val}
-                          >
+                          <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '') + (col.isLocked ? ' locked-cell' : '')}
+                            onClick={() => { if (!canEdit) return; setEditingCell({ rowId: row.id, colKey: col.id }); setEditValue(val); }}
+                            title={col.isLocked ? 'Kolom terkunci' : val}>
                             {val || <span className="text-[#37474f]">-</span>}
                           </div>
                         )}
@@ -683,11 +715,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                   })}
                   {user?.role === 'ADMIN' && (
                     <td>
-                      <button
-                        onClick={() => handleDeleteRow(row.id)}
-                        className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] transition-colors"
-                        title="Hapus baris"
-                      >
+                      <button onClick={() => handleDeleteRow(row.id)} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] transition-colors" title="Hapus baris">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </td>
@@ -698,18 +726,24 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           </table>
         </div>
 
-        {/* Info bar with scroll hints */}
+        {/* Info bar */}
         <div className="flex items-center justify-between p-3 border-t border-white/5">
           <p className="text-xs text-[#546e7a]">
-            Total {filteredRows.length} data{filteredRows.length !== rows.length ? ` (filter dari {rows.length})` : ''}
+            Total {displayRows.length} data{displayRows.length !== rows.length ? ' (filter dari ' + rows.length + ')' : ''}
+            {activeFilterCount > 0 && (
+              <button onClick={() => setColumnFilters({})}
+                className="ml-2 text-[#ffb74d] hover:text-[#ffcc80] underline decoration-dotted">
+                {activeFilterCount} filter aktif (klik untuk hapus semua)
+              </button>
+            )}
           </p>
           <div className="flex items-center gap-3 text-[10px] text-[#546e7a]">
             <span className="flex items-center gap-1">
-              <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
+              <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/></svg>
               scroll atas/bawah
             </span>
             <span className="flex items-center gap-1">
-              <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+              <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
               scroll kiri/kanan
             </span>
           </div>
