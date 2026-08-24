@@ -60,4 +60,8 @@ prompt
 
 server.log
 # Skills directory
-/skills/package-lock.json
+/skills/
+
+# lock files (using bun locally)
+package-lock.json
+*.supabase-db-url
