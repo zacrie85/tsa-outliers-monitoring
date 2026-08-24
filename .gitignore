@@ -66,3 +66,4 @@ server.log
 package-lock.json
 *.supabase-db-url
 tool-results/
+/supabase/
