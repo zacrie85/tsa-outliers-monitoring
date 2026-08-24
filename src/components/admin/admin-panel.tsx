@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Building2, Plus, Shield, Edit, Trash2, X, Check, Eye, TriangleAlert, Pencil } from 'lucide-react';
+import { Users, Building2, Plus, Shield, Edit, Trash2, X, Check, Eye, TriangleAlert, Pencil, Loader2 } from 'lucide-react';
+import { useAppStore } from '@/store/app-store';
 
 export function AdminPanel() {
+  const currentUser = useAppStore((s) => s.user);
   const [users, setUsers] = useState<any[]>([]);
   const [divisions, setDivisions] = useState<any[]>([]);
   const [showAddUser, setShowAddUser] = useState(false);
@@ -14,7 +16,9 @@ export function AdminPanel() {
   const [editDivName, setEditDivName] = useState('');
   const [editDivColor, setEditDivColor] = useState('#6366f1');
   const [deleteDivTarget, setDeleteDivTarget] = useState<any>(null);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<any>(null);
   const [divActionLoading, setDivActionLoading] = useState(false);
+  const [userActionLoading, setUserActionLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -127,7 +131,25 @@ export function AdminPanel() {
     }
   };
 
-  // Predefined color palette for quick selection
+  const handleDeleteUser = async () => {
+    if (!deleteUserTarget) return;
+    setUserActionLoading(true);
+    try {
+      const res = await fetch(`/api/users?id=${deleteUserTarget.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        setDeleteUserTarget(null);
+        fetchData();
+      } else {
+        alert(data.error || 'Gagal menghapus pengguna');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setUserActionLoading(false);
+    }
+  };
+
   const colorPalette = [
     '#ef5350', '#ff7043', '#ffa726', '#ffca28', '#66bb6a',
     '#26a69a', '#42a5f5', '#5c6bc0', '#ab47bc', '#ec407a',
@@ -136,6 +158,35 @@ export function AdminPanel() {
 
   return (
     <div className="flex flex-col gap-4 h-full overflow-auto aero-scroll">
+      {/* Delete User Confirmation Dialog */}
+      {deleteUserTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="glass-card rounded-xl p-5 max-w-sm mx-4" style={{ background: 'rgba(13, 27, 42, 0.97)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-full bg-[#ef5350]/20 flex items-center justify-center">
+                <TriangleAlert className="w-4 h-4 text-[#ef5350]" />
+              </div>
+              <h3 className="text-sm font-semibold text-[#e3f2fd]">Hapus Pengguna?</h3>
+            </div>
+            <div className="p-3 rounded-lg bg-[#ef5350]/10 border border-[#ef5350]/20 mb-4">
+              <p className="text-xs text-[#ef9a9a]">
+                Pengguna <strong>&quot;{deleteUserTarget.name}&quot;</strong> (@{deleteUserTarget.username})
+                dengan role <strong>{deleteUserTarget.role}</strong> akan dihapus secara permanen.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteUserTarget(null)} disabled={userActionLoading}
+                className="px-4 py-2 glass-btn rounded-lg text-sm">Batal</button>
+              <button onClick={handleDeleteUser} disabled={userActionLoading}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40"
+                style={{background:'linear-gradient(135deg, rgba(239,83,80,0.3), rgba(229,57,53,0.3))', border:'1px solid rgba(239,83,80,0.4)', color:'#ef5350'}}>
+                {userActionLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Menghapus...</> : <><Trash2 className="w-3.5 h-3.5" /> Hapus</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Division Confirmation Dialog */}
       {deleteDivTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -187,7 +238,6 @@ export function AdminPanel() {
           </button>
         </div>
 
-        {/* Add Division Form */}
         {showAddDiv && (
           <div className="p-4 rounded-xl bg-white/5 mb-4 border border-white/5">
             <p className="text-[10px] text-[#78909c] mb-2 font-medium">Divisi Baru</p>
@@ -213,12 +263,10 @@ export function AdminPanel() {
           </div>
         )}
 
-        {/* Divisions Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {divisions.map(div => (
             <div key={div.id} className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors group">
               {editingDiv === div.id ? (
-                /* Edit Mode */
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <input type="color" value={editDivColor} onChange={(e) => setEditDivColor(e.target.value)}
@@ -242,33 +290,30 @@ export function AdminPanel() {
                   </div>
                 </div>
               ) : (
-                /* Display Mode */
-                <>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: div.color }} />
-                      <div>
-                        <p className="text-sm font-medium">{div.name}</p>
-                        <p className="text-[11px] text-[#546e7a]">
-                          {div._count.users} pengguna
-                          {div._count.columns > 0 && <> &middot; {div._count.columns} kolom</>}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => startEditDiv(div)}
-                        className="p-1.5 rounded-md hover:bg-white/10 text-[#78909c] hover:text-[#64b5f6] transition-colors"
-                        title="Edit divisi">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => setDeleteDivTarget(div)}
-                        className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#78909c] hover:text-[#ef5350] transition-colors"
-                        title="Hapus divisi">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: div.color }} />
+                    <div>
+                      <p className="text-sm font-medium">{div.name}</p>
+                      <p className="text-[11px] text-[#546e7a]">
+                        {div._count.users} pengguna
+                        {div._count.columns > 0 && <> &middot; {div._count.columns} kolom</>}
+                      </p>
                     </div>
                   </div>
-                </>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => startEditDiv(div)}
+                      className="p-1.5 rounded-md hover:bg-white/10 text-[#78909c] hover:text-[#64b5f6] transition-colors"
+                      title="Edit divisi">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => setDeleteDivTarget(div)}
+                      className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#78909c] hover:text-[#ef5350] transition-colors"
+                      title="Hapus divisi">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           ))}
@@ -353,11 +398,12 @@ export function AdminPanel() {
                 <th>Role</th>
                 <th>Divisi</th>
                 <th>Bergabung</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {users.map(u => (
-                <tr key={u.id}>
+                <tr key={u.id} className="group/tr">
                   <td className="text-xs font-medium">{u.username}</td>
                   <td className="text-xs">{u.name}</td>
                   <td>
@@ -384,6 +430,15 @@ export function AdminPanel() {
                   </td>
                   <td className="text-[11px] text-[#546e7a]">
                     {new Date(u.createdAt).toLocaleDateString('id-ID')}
+                  </td>
+                  <td>
+                    {u.id !== currentUser?.id && (
+                      <button onClick={() => setDeleteUserTarget(u)}
+                        className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#37474f] hover:text-[#ef5350] transition-colors opacity-0 group-hover/tr:opacity-100"
+                        title="Hapus pengguna">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Lock, Check, X, Shield, Edit2, Eye, KeyRound } from 'lucide-react';
+import { Lock, Check, X, Shield, Edit2, Eye, KeyRound, Trash2, TriangleAlert, Loader2 } from 'lucide-react';
+import { useAppStore } from '@/store/app-store';
 
 const SETTINGS_PASSWORD = 'asrama33';
 
 export function SettingsPanel() {
+  const currentUser = useAppStore((s) => s.user);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [gatePassword, setGatePassword] = useState('');
   const [gateError, setGateError] = useState('');
@@ -14,6 +16,8 @@ export function SettingsPanel() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saveMsg, setSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -66,6 +70,25 @@ export function SettingsPanel() {
       }
     } catch {
       setSaveMsg({ type: 'error', text: 'Terjadi kesalahan' });
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/users?id=${deleteTarget.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        setDeleteTarget(null);
+        fetchUsers();
+      } else {
+        alert(data.error || 'Gagal menghapus pengguna');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -132,6 +155,35 @@ export function SettingsPanel() {
         </div>
       )}
 
+      {/* Delete User Confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="glass-card rounded-xl p-5 max-w-sm mx-4" style={{ background: 'rgba(13, 27, 42, 0.97)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-full bg-[#ef5350]/20 flex items-center justify-center">
+                <TriangleAlert className="w-4 h-4 text-[#ef5350]" />
+              </div>
+              <h3 className="text-sm font-semibold text-[#e3f2fd]">Hapus Pengguna?</h3>
+            </div>
+            <div className="p-3 rounded-lg bg-[#ef5350]/10 border border-[#ef5350]/20 mb-4">
+              <p className="text-xs text-[#ef9a9a]">
+                Pengguna <strong>&quot;{deleteTarget.name}&quot;</strong> (@{deleteTarget.username})
+                akan dihapus secara permanen.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+                className="px-4 py-2 glass-btn rounded-lg text-sm">Batal</button>
+              <button onClick={handleDeleteUser} disabled={deleting}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40"
+                style={{background:'linear-gradient(135deg, rgba(239,83,80,0.3), rgba(229,57,53,0.3))', border:'1px solid rgba(239,83,80,0.4)', color:'#ef5350'}}>
+                {deleting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Menghapus...</> : <><Trash2 className="w-3.5 h-3.5" /> Hapus</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="glass-card rounded-xl p-5">
         <h3 className="text-sm font-semibold text-[#e3f2fd] mb-4">Kelola Password Pengguna</h3>
         <div className="space-y-2">
@@ -173,12 +225,23 @@ export function SettingsPanel() {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setChangingPassword(u.id)}
-                    className="px-3 py-1.5 glass-btn rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    Ubah Password
-                  </button>
+                  <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => setChangingPassword(u.id)}
+                      className="px-3 py-1.5 glass-btn rounded-lg text-xs"
+                    >
+                      Ubah Password
+                    </button>
+                    {u.id !== currentUser?.id && (
+                      <button
+                        onClick={() => setDeleteTarget(u)}
+                        className="p-1.5 rounded-lg hover:bg-[#ef5350]/10 text-[#78909c] hover:text-[#ef5350] transition-colors"
+                        title="Hapus pengguna"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
