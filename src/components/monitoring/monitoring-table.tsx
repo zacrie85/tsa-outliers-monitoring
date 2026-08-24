@@ -78,7 +78,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const [tempFilterValues, setTempFilterValues] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
-  const editRef = useRef<HTMLInputElement>(null);
+  const editRef = useRef<HTMLTextAreaElement>(null);
   const tableBodyRef = useRef<HTMLDivElement>(null);
   const [scrollInfo, setScrollInfo] = useState({ top: false, bottom: true, left: false, right: true });
   const filterDropdownRef = useRef<HTMLDivElement>(null);
@@ -118,6 +118,8 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   useEffect(() => {
     if (editingCell && editRef.current) {
       editRef.current.focus();
+      const len = editRef.current.value.length;
+      editRef.current.setSelectionRange(len, len);
     }
   }, [editingCell]);
 
@@ -885,15 +887,16 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                     return (
                       <td key={col.key}>
                         {isEditing ? (
-                          <input ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                          <textarea ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
                             onBlur={() => handleCellSave(row.id, col.key, editValue)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') handleCellSave(row.id, col.key, editValue); if (e.key === 'Escape') setEditingCell(null); }}
-                            className="w-full px-2 py-1 glass-input rounded text-xs" style={{ minWidth: col.width - 24 }} />
+                            onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleCellSave(row.id, col.key, editValue); } }}
+                            className="w-full px-2 py-1 glass-input rounded text-xs resize-y" rows={2}
+                            style={{ minWidth: col.width - 24, minHeight: 40 }} />
                         ) : (
                           <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '')}
                             onClick={() => { if (canEdit) { setEditingCell({ rowId: row.id, colKey: col.key }); setEditValue(val); } }}
                             title={val}>
-                            {val || <span className="text-[#37474f]">-</span>}
+                            {val ? val.split('\n').map((line, i) => <span key={i}>{line}{i < val.split('\n').length - 1 && <br />}</span>) : <span className="text-[#37474f]">-</span>}
                           </div>
                         )}
                       </td>
@@ -906,15 +909,16 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                     return (
                       <td key={col.id}>
                         {isEditing ? (
-                          <input ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                          <textarea ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
                             onBlur={() => handleCellSave(row.id, col.id, editValue)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') handleCellSave(row.id, col.id, editValue); if (e.key === 'Escape') setEditingCell(null); }}
-                            className="w-full px-2 py-1 glass-input rounded text-xs" />
+                            onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleCellSave(row.id, col.id, editValue); } }}
+                            className="w-full px-2 py-1 glass-input rounded text-xs resize-y" rows={2}
+                            style={{ minHeight: 40 }} />
                         ) : (
                           <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '') + (col.isLocked ? ' locked-cell' : '')}
                             onClick={() => { if (!canEdit) return; setEditingCell({ rowId: row.id, colKey: col.id }); setEditValue(val); }}
                             title={col.isLocked ? 'Kolom terkunci' : val}>
-                            {val || <span className="text-[#37474f]">-</span>}
+                            {val ? val.split('\n').map((line, i) => <span key={i}>{line}{i < val.split('\n').length - 1 && <br />}</span>) : <span className="text-[#37474f]">-</span>}
                           </div>
                         )}
                       </td>
