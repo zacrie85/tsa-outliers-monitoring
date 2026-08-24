@@ -1,0 +1,10 @@
+.env
+db/
+upload/
+*.db
+node_modules/
+supabase/
+skills/
+tool-results/
+scripts/
+*.log
