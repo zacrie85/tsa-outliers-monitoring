@@ -5,7 +5,7 @@ import { useAppStore } from '@/store/app-store';
 import {
   Plus, Trash2, Search, Lock, Unlock, Settings,
   Download, X, Save, FileSpreadsheet, MapPin, ChevronDown, ChevronRight,
-  Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown, Upload, FileUp, Loader2, AlertCircle
+  Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown, Upload, FileUp, Loader2, AlertCircle, Eraser, TriangleAlert
 } from 'lucide-react';
 
 const BASE_COLUMNS = [
@@ -352,6 +352,9 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const [importResult, setImportResult] = useState<any>(null);
   const [importError, setImportError] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearResult, setClearResult] = useState<any>(null);
   const [kmzCoordCol, setKmzCoordCol] = useState('');
   const [kmzNameCols, setKmzNameCols] = useState<string[]>(['kelRwSiteName', 'desaPerum']);
   const [kmzDescCols, setKmzDescCols] = useState<string[]>([]);
@@ -431,6 +434,24 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     setImportError('');
     setImportResult(null);
     setImportMode('replace');
+  };
+
+  const handleClearAll = async () => {
+    setClearing(true);
+    setClearResult(null);
+    try {
+      const res = await fetch('/api/monitoring/clear', { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error); return; }
+      setClearResult(data);
+      fetchData();
+    } catch (err: any) { alert('Gagal menghapus data: ' + (err.message || 'Unknown error')); }
+    finally { setClearing(false); }
+  };
+
+  const closeClearConfirm = () => {
+    setShowClearConfirm(false);
+    setClearResult(null);
   };
 
   // --- FILTER DROPDOWN COMPONENT ---
@@ -601,6 +622,51 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
         </div>
       )}
 
+      {/* Clear Data Confirmation Dialog */}
+      {showClearConfirm && (
+        <div className="glass-card rounded-xl p-5 max-w-md mx-auto">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Eraser className="w-5 h-5 text-[#ef5350]" />
+              <h3 className="text-sm font-semibold text-[#e3f2fd]">Clear Semua Data</h3>
+            </div>
+            <button onClick={closeClearConfirm} className="text-[#546e7a] hover:text-white" disabled={clearing}><X className="w-4 h-4" /></button>
+          </div>
+
+          {!clearResult ? (
+            <>
+              <div className="flex items-start gap-3 mb-4 p-3 rounded-lg bg-[#ef5350]/10 border border-[#ef5350]/20">
+                <TriangleAlert className="w-5 h-5 text-[#ef5350] mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm text-[#ef9a9a] font-medium">Peringatan! Tindakan ini tidak bisa dibatalkan.</p>
+                  <p className="text-xs text-[#78909c] mt-1">Semua data baris ({rows.length} baris) dan kolom kustom ({customCols.length} kolom) akan dihapus secara permanen dari database.</p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={closeClearConfirm} className="px-4 py-2 glass-btn rounded-lg text-sm" disabled={clearing}>Batal</button>
+                <button
+                  onClick={handleClearAll}
+                  disabled={clearing || rows.length === 0}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{background:'linear-gradient(135deg, rgba(239,83,80,0.3), rgba(229,57,53,0.3))', border:'1px solid rgba(239,83,80,0.4)', color:'#ef5350'}}
+                >
+                  {clearing ? <><Loader2 className="w-4 h-4 animate-spin" /> Menghapus...</> : <><Eraser className="w-4 h-4" /> Ya, Hapus Semua</>}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-3">
+              <div className="w-12 h-12 rounded-full bg-[#81c784]/20 flex items-center justify-center mx-auto mb-3">
+                <Check className="w-6 h-6 text-[#81c784]" />
+              </div>
+              <h4 className="text-sm font-semibold text-[#e0e0e0] mb-1">Data Berhasil Dihapus!</h4>
+              <p className="text-xs text-[#90caf9] mb-4">{clearResult.message}</p>
+              <button onClick={closeClearConfirm} className="px-4 py-2 glass-btn rounded-lg text-sm">Tutup</button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* KMZ Export Dialog */}
       {showKmzDialog && (
         <div className="glass-card rounded-xl p-5">
@@ -660,6 +726,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           {!viewer && user?.role === 'ADMIN' && (
             <>
               <button onClick={() => setShowImportDialog(true)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm" style={{background:'linear-gradient(135deg, rgba(255,183,77,0.2), rgba(255,138,101,0.2))', border:'1px solid rgba(255,183,77,0.3)'}}><Upload className="w-4 h-4" style={{color:'#ffb74d'}}/> <span style={{color:'#ffb74d'}}>Import Data</span></button>
+              <button onClick={() => setShowClearConfirm(true)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm" style={{background:'linear-gradient(135deg, rgba(239,83,80,0.15), rgba(229,57,53,0.15))', border:'1px solid rgba(239,83,80,0.25)'}}><Eraser className="w-4 h-4" style={{color:'#ef5350'}}/> <span style={{color:'#ef5350'}}>Clear Data</span></button>
               <button onClick={() => setShowColManager(!showColManager)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><Settings className="w-4 h-4" /> Kelola Kolom</button>
               <button onClick={() => setShowAddRow(!showAddRow)} className="flex items-center gap-2 px-4 py-2.5 glass-btn-success rounded-lg text-sm"><Plus className="w-4 h-4" /> Tambah Baris</button>
             </>
