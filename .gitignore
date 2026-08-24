@@ -65,3 +65,4 @@ server.log
 # lock files (using bun locally)
 package-lock.json
 *.supabase-db-url
+tool-results/
