@@ -5,7 +5,7 @@ import { useAppStore } from '@/store/app-store';
 import {
   Plus, Trash2, Search, Lock, Unlock, Settings,
   Download, X, Save, FileSpreadsheet, MapPin, ChevronDown, ChevronRight,
-  Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown
+  Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown, Upload, FileUp, Loader2, AlertCircle
 } from 'lucide-react';
 
 const BASE_COLUMNS = [
@@ -345,6 +345,13 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   };
 
   const [showKmzDialog, setShowKmzDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importMode, setImportMode] = useState<'replace' | 'append'>('replace');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+  const [importError, setImportError] = useState('');
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [kmzCoordCol, setKmzCoordCol] = useState('');
   const [kmzNameCols, setKmzNameCols] = useState<string[]>(['kelRwSiteName', 'desaPerum']);
   const [kmzDescCols, setKmzDescCols] = useState<string[]>([]);
@@ -398,6 +405,32 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = 'tsa_outliers.kmz'; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    setImporting(true);
+    setImportError('');
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', importFile);
+      fd.append('mode', importMode);
+      const res = await fetch('/api/monitoring/import', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) { setImportError(data.error); return; }
+      setImportResult(data);
+      fetchData();
+    } catch (err: any) { setImportError(err.message || 'Gagal import'); }
+    finally { setImporting(false); }
+  };
+
+  const closeImport = () => {
+    setShowImportDialog(false);
+    setImportFile(null);
+    setImportError('');
+    setImportResult(null);
+    setImportMode('replace');
   };
 
   // --- FILTER DROPDOWN COMPONENT ---
@@ -462,6 +495,112 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
 
   return (
     <div className="flex flex-col h-full gap-4">
+      {/* Import Dialog */}
+      {showImportDialog && (
+        <div className="glass-card rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Upload className="w-5 h-5 text-[#ffb74d]" />
+              <h3 className="text-sm font-semibold text-[#e3f2fd]">Import Data (Excel / CSV)</h3>
+            </div>
+            <button onClick={closeImport} className="text-[#546e7a] hover:text-white"><X className="w-4 h-4" /></button>
+          </div>
+
+          {!importResult ? (
+            <>
+              {/* Drop zone */}
+              <div
+                onClick={() => importInputRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files[0]; if (f) setImportFile(f); }}
+                className="border-2 border-dashed border-white/15 rounded-xl p-8 text-center cursor-pointer hover:border-[#ffb74d]/50 hover:bg-white/5 transition-all"
+              >
+                <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setImportFile(f); }} />
+                {importFile ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <FileUp className="w-8 h-8 text-[#ffb74d]" />
+                    <p className="text-sm text-[#e0e0e0] font-medium">{importFile.name}</p>
+                    <p className="text-xs text-[#546e7a]">{(importFile.size / 1024).toFixed(1)} KB</p>
+                    <button onClick={(e) => { e.stopPropagation(); setImportFile(null); }} className="text-xs text-[#ef5350] hover:text-[#ff8a80]">Ganti file</button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <Upload className="w-8 h-8 text-[#546e7a]" />
+                    <p className="text-sm text-[#b0bec5]">Klik atau drag & drop file di sini</p>
+                    <p className="text-xs text-[#546e7a]">Mendukung .xlsx, .xls, .csv</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Mode selection */}
+              <div className="flex items-center gap-4 mt-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="importMode" value="replace" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} className="accent-[#64b5f6]" />
+                  <div>
+                    <span className="text-sm text-[#e0e0e0]">Ganti Semua Data</span>
+                    <p className="text-[10px] text-[#546e7a]">Data lama akan dihapus, diganti data baru</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="importMode" value="append" checked={importMode === 'append'} onChange={() => setImportMode('append')} className="accent-[#64b5f6]" />
+                  <div>
+                    <span className="text-sm text-[#e0e0e0]">Tambahkan ke Data</span>
+                    <p className="text-[10px] text-[#546e7a]">Data baru ditambahkan setelah data yang ada</p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Error */}
+              {importError && (
+                <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-[#ef5350]/10 border border-[#ef5350]/20">
+                  <AlertCircle className="w-4 h-4 text-[#ef5350] mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-[#ef9a9a]">{importError}</p>
+                </div>
+              )}
+
+              {/* Import button */}
+              <div className="flex justify-end mt-4">
+                <button
+                  onClick={handleImport}
+                  disabled={!importFile || importing}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{background:'linear-gradient(135deg, rgba(255,183,77,0.3), rgba(255,138,101,0.3))', border:'1px solid rgba(255,183,77,0.4)', color:'#ffb74d'}}
+                >
+                  {importing ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengimport...</> : <><Upload className="w-4 h-4" /> Import Sekarang</>}
+                </button>
+              </div>
+            </>
+          ) : (
+            /* Success result */
+            <div className="text-center py-4">
+              <div className="w-12 h-12 rounded-full bg-[#81c784]/20 flex items-center justify-center mx-auto mb-3">
+                <Check className="w-6 h-6 text-[#81c784]" />
+              </div>
+              <h4 className="text-sm font-semibold text-[#e0e0e0] mb-1">Import Berhasil!</h4>
+              <p className="text-xs text-[#90caf9] mb-4">{importResult.inserted} baris data diimport (mode: {importResult.mode === 'replace' ? 'Ganti Semua' : 'Tambahkan'})</p>
+              <div className="text-left p-3 rounded-lg bg-white/5 mb-4 max-h-48 overflow-y-auto aero-scroll">
+                <p className="text-[10px] text-[#78909c] mb-1 font-medium">Kolom Terdeteksi Otomatis:</p>
+                {Object.entries(importResult.mapping.baseColumns as Record<string, string>).map(([src, field]) => (
+                  <div key={src} className="flex items-center gap-2 text-xs py-0.5">
+                    <span className="text-[#b0bec5]">{src}</span>
+                    <span className="text-[#546e7a]">&rarr;</span>
+                    <span className="text-[#90caf9]">{field}</span>
+                  </div>
+                ))}
+                {Object.entries(importResult.mapping.customColumns as Record<string, string>).map(([src, colId]) => (
+                  <div key={src} className="flex items-center gap-2 text-xs py-0.5">
+                    <span className="text-[#b0bec5]">{src}</span>
+                    <span className="text-[#546e7a]">&rarr;</span>
+                    <span className="text-[#ffb74d]">Kolom Baru</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={closeImport} className="px-4 py-2 glass-btn rounded-lg text-sm">Tutup</button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* KMZ Export Dialog */}
       {showKmzDialog && (
         <div className="glass-card rounded-xl p-5">
@@ -520,6 +659,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           <button onClick={() => setShowKmzDialog(!showKmzDialog)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><MapPin className="w-4 h-4" /> Export KMZ</button>
           {!viewer && user?.role === 'ADMIN' && (
             <>
+              <button onClick={() => setShowImportDialog(true)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm" style={{background:'linear-gradient(135deg, rgba(255,183,77,0.2), rgba(255,138,101,0.2))', border:'1px solid rgba(255,183,77,0.3)'}}><Upload className="w-4 h-4" style={{color:'#ffb74d'}}/> <span style={{color:'#ffb74d'}}>Import Data</span></button>
               <button onClick={() => setShowColManager(!showColManager)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><Settings className="w-4 h-4" /> Kelola Kolom</button>
               <button onClick={() => setShowAddRow(!showAddRow)} className="flex items-center gap-2 px-4 py-2.5 glass-btn-success rounded-lg text-sm"><Plus className="w-4 h-4" /> Tambah Baris</button>
             </>
