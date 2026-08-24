@@ -1,14 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAppStore, SessionUser } from '@/store/app-store';
+import { useAppStore } from '@/store/app-store';
 import { LoginForm } from '@/components/login-form';
 import { MonitoringTable } from '@/components/monitoring/monitoring-table';
 import { AuditLog } from '@/components/monitoring/audit-log';
 import { DashboardCharts } from '@/components/dashboard/dashboard-charts';
 import { AdminPanel } from '@/components/admin/admin-panel';
+import { SettingsPanel } from '@/components/settings-panel';
 import {
-  Table2, History, BarChart3, Shield, LogOut, User,
+  Table2, History, BarChart3, Shield, LogOut, User, Settings, Eye,
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -36,9 +37,9 @@ export default function HomePage() {
       <div className="min-h-screen aero-bg flex items-center justify-center">
         <div className="glass-card rounded-2xl p-8 text-center">
           <div className="w-10 h-10 border-2 border-[#64b5f6]/30 border-t-[#64b5f6] rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-[#78909c]">Memuat...</p>
-          </div>
+          <p className="text-sm text-[#78909c]">Memuat...</p>
         </div>
+      </div>
     );
   }
 
@@ -46,12 +47,23 @@ export default function HomePage() {
     return <LoginForm />;
   }
 
+  const isViewer = user.role === 'VIEWER';
+
   const tabs = [
     { id: 'monitoring' as const, label: 'Monitoring', icon: Table2 },
     { id: 'logs' as const, label: 'Audit Log', icon: History },
     { id: 'dashboard' as const, label: 'Dashboard', icon: BarChart3 },
+    { id: 'settings' as const, label: 'Settings', icon: Settings },
     ...(user.role === 'ADMIN' ? [{ id: 'admin' as const, label: 'Admin', icon: Shield }] : []),
   ];
+
+  const getRoleBadgeStyle = (role: string) => {
+    switch (role) {
+      case 'ADMIN': return 'bg-[#ba68c8]/15 text-[#ce93d8] border border-[#ba68c8]/30';
+      case 'VIEWER': return 'bg-[#81c784]/15 text-[#a5d6a7] border border-[#81c784]/30';
+      default: return 'bg-[#64b5f6]/15 text-[#90caf9] border border-[#64b5f6]/30';
+    }
+  };
 
   return (
     <div className="min-h-screen aero-bg flex flex-col relative">
@@ -101,14 +113,12 @@ export default function HomePage() {
                     borderColor: '#64b5f650', color: '#90caf9', backgroundColor: '#64b5f615',
                   }}>{user.divisionName}</span>
                 )}
-                <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                  user.role === 'ADMIN'
-                    ? 'bg-[#ba68c8]/15 text-[#ce93d8] border border-[#ba68c8]/30'
-                    : 'bg-[#64b5f6]/15 text-[#90caf9] border border-[#64b5f6]/30'
-                }`}>{user.role}</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full ${getRoleBadgeStyle(user.role)}`}>
+                  {user.role}
+                </span>
                 <div className="flex items-center gap-1.5">
                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#64b5f6]/30 to-[#42a5f5]/10 border border-[#64b5f6]/20 flex items-center justify-center">
-                    <User className="w-3.5 h-3.5 text-[#64b5f6]" />
+                    {isViewer ? <Eye className="w-3.5 h-3.5 text-[#81c784]" /> : <User className="w-3.5 h-3.5 text-[#64b5f6]" />}
                   </div>
                   <span className="text-xs text-[#b0bec5] hidden md:inline">{user.name}</span>
                 </div>
@@ -126,15 +136,16 @@ export default function HomePage() {
 
         {/* Main Content */}
         <main className="flex-1 p-4 max-w-[1920px] mx-auto w-full" style={{ minHeight: 'calc(100vh - 60px)' }}>
-          {activeTab === 'monitoring' && <MonitoringTable />}
+          {activeTab === 'monitoring' && <MonitoringTable viewer={isViewer} />}
           {activeTab === 'logs' && <AuditLog />}
           {activeTab === 'dashboard' && <DashboardCharts />}
+          {activeTab === 'settings' && <SettingsPanel />}
           {activeTab === 'admin' && <AdminPanel />}
         </main>
 
         {/* Footer */}
         <footer className="glass-nav mt-auto px-4 py-2 flex items-center justify-between">
-          <p className="text-[10px] text-[#37474f]">TSA Outliers Monitoring System v1.0</p>
+          <p className="text-[10px] text-[#37474f]">TSA Outliers Monitoring System v2.0</p>
           <p className="text-[10px] text-[#37474f]">Data per 11 Agustus 2026</p>
         </footer>
       </div>

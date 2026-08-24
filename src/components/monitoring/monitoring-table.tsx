@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '@/store/app-store';
 import {
   Plus, Trash2, Search, Lock, Unlock, Settings, ChevronLeft, ChevronRight,
-  Download, ArrowUpDown, X, Save
+  Download, X, Save, FileSpreadsheet, MapPin
 } from 'lucide-react';
 
 const BASE_COLUMNS = [
@@ -55,7 +55,7 @@ interface CustomColumn {
   division?: { id: string; name: string; color: string } | null;
 }
 
-export function MonitoringTable() {
+export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const user = useAppStore((s) => s.user);
   const [rows, setRows] = useState<MonitoringRow[]>([]);
   const [customCols, setCustomCols] = useState<CustomColumn[]>([]);
@@ -91,7 +91,6 @@ export function MonitoringTable() {
     }
   }, []);
 
-// eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void fetchData(); }, [fetchData]);
 
   useEffect(() => {
@@ -101,6 +100,7 @@ export function MonitoringTable() {
   }, [editingCell]);
 
   const canEditCell = (colKey: string, col: CustomColumn | null) => {
+    if (viewer) return false;
     if (user?.role === 'ADMIN') return true;
     if (!col) {
       return BASE_COLUMNS.find(c => c.key === colKey)?.editable || false;
@@ -276,8 +276,131 @@ export function MonitoringTable() {
     URL.revokeObjectURL(url);
   };
 
+  const [showKmzDialog, setShowKmzDialog] = useState(false);
+  const [kmzCoordCol, setKmzCoordCol] = useState('');
+  const [kmzNameCols, setKmzNameCols] = useState<string[]>(['kelRwSiteName', 'desaPerum']);
+  const [kmzDescCols, setKmzDescCols] = useState<string[]>([]);
+
+  const getAllColumns = () => [
+    ...BASE_COLUMNS.map(c => ({ key: c.key, label: c.label })),
+    ...customCols.map(c => ({ key: c.id, label: c.label })),
+  ];
+
+  const parseCoord = (val: string): { lat: number; lng: number } | null => {
+    const cleaned = val.replace(/[()\s]/g, '');
+    const parts = cleaned.split(',');
+    if (parts.length === 2) {
+      const lat = parseFloat(parts[0]);
+      const lng = parseFloat(parts[1]);
+      if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
+    }
+    return null;
+  };
+
+  const exportExcel = async () => {
+    const XLSX = await import('xlsx');
+    const allCols = getAllColumns();
+    const data = filteredRows.map(row =>
+      allCols.reduce((acc, c) => { acc[c.label] = getCellValue(row, c.key); return acc; }, {} as Record<string, string>)
+    );
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'TSA Outliers');
+    XLSX.writeFile(wb, 'tsa_outliers_monitoring.xlsx');
+  };
+
+  const exportKmz = async () => {
+    if (!kmzCoordCol) { alert('Pilih kolom koordinat terlebih dahulu'); return; }
+    const JSZip = (await import('jszip')).default;
+    const allCols = getAllColumns();
+    const nameColLabels = allCols.filter(c => kmzNameCols.includes(c.key)).map(c => c.label);
+    const descColLabels = allCols.filter(c => kmzDescCols.includes(c.key)).map(c => c.label);
+    let placemarks = '';
+    let count = 0;
+    for (const row of filteredRows) {
+      const coordVal = getCellValue(row, kmzCoordCol);
+      const coord = parseCoord(coordVal);
+      if (!coord) continue;
+      const nameParts = kmzNameCols.map(k => getCellValue(row, k)).filter(Boolean);
+      const descParts = descColLabels.map((label, i) => {
+        const key = kmzDescCols[i];
+        return '<b>' + label + ':</b> ' + getCellValue(row, key);
+      });
+      placemarks += '<Placemark><name>' + (nameParts.join(' - ') || 'Point ' + (count + 1)) + '</name><description><![CDATA[' + (descParts.join('<br/>') || 'Tidak ada keterangan') + ']]></description><Point><coordinates>' + coord.lng + ',' + coord.lat + ',0</coordinates></Point></Placemark>';
+      count++;
+    }
+    if (count === 0) { alert('Tidak ada data dengan koordinat valid. Pastikan format: (-6.994292,110.429400)'); return; }
+    const kml = '<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>TSA Outliers Monitoring</name><description>Exported ' + count + ' points</description><Style id="defaultStyle"><IconStyle><Icon><href>http://maps.google.com/mapfiles/ms/micons/red-dot.png</href></Icon></IconStyle></Style>' + placemarks + '</Document></kml>';
+    const zip = new JSZip();
+    zip.file('doc.kml', kml);
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'tsa_outliers.kmz'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex flex-col h-full gap-4">
+      {/* KMZ Export Dialog */}
+      {showKmzDialog && (
+        <div className="glass-card rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-[#ffb74d]" />
+              <h3 className="text-sm font-semibold text-[#e3f2fd]">Export KMZ</h3>
+            </div>
+            <button onClick={() => setShowKmzDialog(false)} className="text-[#546e7a] hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-xs text-[#78909c] mb-1">Kolom Koordinat <span className="text-[#ef5350]">*</span></label>
+              <select value={kmzCoordCol} onChange={(e) => setKmzCoordCol(e.target.value)}
+                className="w-full px-3 py-2 glass-input rounded-lg text-sm">
+                <option value="" style={{ background: '#1a1a2e' }}>-- Pilih Kolom --</option>
+                {getAllColumns().map(c => (
+                  <option key={c.key} value={c.key} style={{ background: '#1a1a2e' }}>{c.label}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-[#546e7a] mt-1">Format: (-6.994292,110.429400)</p>
+            </div>
+            <div>
+              <label className="block text-xs text-[#78909c] mb-1">Kolom Nama (Placemark)</label>
+              <div className="max-h-28 overflow-y-auto aero-scroll space-y-1 p-2 rounded-lg bg-white/5">
+                {getAllColumns().map(c => (
+                  <label key={c.key} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input type="checkbox" checked={kmzNameCols.includes(c.key)}
+                      onChange={(e) => setKmzNameCols(prev =>
+                        e.target.checked ? [...prev, c.key] : prev.filter(k => k !== c.key)
+                      )} className="rounded" />
+                    <span className="text-[#b0bec5]">{c.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-[#78909c] mb-1">Kolom Deskripsi (opsional)</label>
+              <div className="max-h-28 overflow-y-auto aero-scroll space-y-1 p-2 rounded-lg bg-white/5">
+                {getAllColumns().map(c => (
+                  <label key={c.key} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input type="checkbox" checked={kmzDescCols.includes(c.key)}
+                      onChange={(e) => setKmzDescCols(prev =>
+                        e.target.checked ? [...prev, c.key] : prev.filter(k => k !== c.key)
+                      )} className="rounded" />
+                    <span className="text-[#b0bec5]">{c.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <button onClick={exportKmz} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
+            <MapPin className="w-4 h-4" /> Download KMZ
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="glass-card rounded-xl p-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px]">
@@ -291,10 +414,16 @@ export function MonitoringTable() {
           />
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={exportExcel} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
+            <FileSpreadsheet className="w-4 h-4" /> Export Excel
+          </button>
           <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
             <Download className="w-4 h-4" /> Export CSV
           </button>
-          {user?.role === 'ADMIN' && (
+          <button onClick={() => setShowKmzDialog(!showKmzDialog)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
+            <MapPin className="w-4 h-4" /> Export KMZ
+          </button>
+          {!viewer && user?.role === 'ADMIN' && (
             <>
               <button onClick={() => setShowColManager(!showColManager)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm">
                 <Settings className="w-4 h-4" /> Kelola Kolom

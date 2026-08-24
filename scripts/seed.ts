@@ -47,7 +47,7 @@ async function seed() {
     create: {
       username: 'admin',
       name: 'Administrator',
-      password: hashPassword('admin123'),
+      password: hashPassword('asrama33'),
       role: 'ADMIN',
     }
   });
@@ -127,6 +127,18 @@ async function seed() {
       }
     });
   }
+
+  // Add viewer user
+  await prisma.user.upsert({
+    where: { username: 'viewer' },
+    update: {},
+    create: {
+      username: 'viewer',
+      name: 'Viewer',
+      password: hashPassword('viewer123'),
+      role: 'VIEWER',
+    }
+  });
 
   console.log('Seeding complete!');
   await prisma.$disconnect();
