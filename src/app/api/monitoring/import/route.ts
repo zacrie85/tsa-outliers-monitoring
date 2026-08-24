@@ -45,8 +45,26 @@ const BASE_FIELD_MAP: Record<string, { key: string; type: 'string' | 'number' }>
   'remarksjlm': { key: 'remarksJlm', type: 'string' },
 };
 
+const HEADER_KEYWORDS = ['no', 'provinsi', 'kabupaten', 'kecamatan', 'kelurahan', 'homepass', 'odp', 'category', 'index', 'remarks', 'klasifikasi', 'pic', 'desa', 'site'];
+
 function normalizeHeader(h: string): string {
   return h.toString().trim().toLowerCase().replace(/[_\-]/g, ' ').replace(/\s+/g, ' ');
+}
+
+function findHeaderRow(allRows: any[][]): number {
+  let bestRow = 0, bestScore = 0;
+  for (let r = 0; r < Math.min(allRows.length, 10); r++) {
+    const row = allRows[r];
+    let score = 0;
+    for (const cell of row) {
+      const norm = normalizeHeader(String(cell));
+      for (const kw of HEADER_KEYWORDS) {
+        if (norm === kw || norm.includes(kw)) { score++; break; }
+      }
+    }
+    if (score > bestScore) { bestScore = score; bestRow = r; }
+  }
+  return bestRow;
 }
 
 function autoDetectMapping(headers: string[]): {
@@ -149,9 +167,12 @@ export async function POST(request: NextRequest) {
         return result;
       }
 
-      const headers = parseCSVLine(lines[0], sep);
-      for (let i = 1; i < lines.length; i++) {
+      const csvRows: string[][] = lines.map(l => parseCSVLine(l, sep));
+      const headerLineIdx = findHeaderRow(csvRows);
+      const headers = parseCSVLine(lines[headerLineIdx], sep);
+      for (let i = headerLineIdx + 1; i < lines.length; i++) {
         const vals = parseCSVLine(lines[i], sep);
+        if (vals.every(v => v === '')) continue;
         const obj: Record<string, any> = {};
         headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
         rows.push(obj);
@@ -160,7 +181,16 @@ export async function POST(request: NextRequest) {
       const XLSX = await import('xlsx');
       const wb = XLSX.read(buffer, { type: 'buffer' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      const allRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const headerIdx = findHeaderRow(allRows);
+      const headers = allRows[headerIdx].map(h => String(h).trim());
+      for (let i = headerIdx + 1; i < allRows.length; i++) {
+        const vals = allRows[i];
+        if (!vals || vals.every(v => String(v).trim() === '')) continue;
+        const obj: Record<string, any> = {};
+        headers.forEach((h, idx) => { obj[h] = vals[idx] ?? ''; });
+        rows.push(obj);
+      }
     } else {
       return NextResponse.json({ error: 'Format file tidak didukung. Gunakan .csv, .xlsx, atau .xls' }, { status: 400 });
     }
