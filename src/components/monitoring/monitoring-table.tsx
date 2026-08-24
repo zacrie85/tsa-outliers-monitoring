@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '@/store/app-store';
 import {
-  Plus, Trash2, Search, Lock, Unlock, Settings, ChevronLeft, ChevronRight,
-  Download, X, Save, FileSpreadsheet, MapPin
+  Plus, Trash2, Search, Lock, Unlock, Settings,
+  Download, X, Save, FileSpreadsheet, MapPin, ChevronDown, ChevronRight
 } from 'lucide-react';
 
 const BASE_COLUMNS = [
@@ -69,9 +69,9 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const [newColDivision, setNewColDivision] = useState('');
   const [showAddRow, setShowAddRow] = useState(false);
   const [newRow, setNewRow] = useState<any>({});
-  const [page, setPage] = useState(0);
-  const pageSize = 50;
   const editRef = useRef<HTMLInputElement>(null);
+  const tableBodyRef = useRef<HTMLDivElement>(null);
+  const [scrollInfo, setScrollInfo] = useState({ top: false, bottom: true, left: false, right: true });
 
   const fetchData = useCallback(async () => {
     try {
@@ -257,8 +257,17 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     ].some(v => String(v).toLowerCase().includes(s));
   });
 
-  const pagedRows = filteredRows.slice(page * pageSize, (page + 1) * pageSize);
-  const totalPages = Math.ceil(filteredRows.length / pageSize);
+  const updateScrollInfo = () => {
+    const el = tableBodyRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight, scrollLeft, scrollWidth, clientWidth } = el;
+    setScrollInfo({
+      top: scrollTop > 5,
+      bottom: scrollTop + clientHeight < scrollHeight - 5,
+      left: scrollLeft > 5,
+      right: scrollLeft + clientWidth < scrollWidth - 5,
+    });
+  };
 
   const exportCSV = () => {
     const allCols = [...BASE_COLUMNS, ...customCols.map(c => ({ key: c.id, label: c.label, width: 150, editable: false }))];
@@ -408,7 +417,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           <input
             type="text"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari data..."
             className="w-full pl-10 pr-4 py-2.5 glass-input rounded-lg text-sm"
           />
@@ -546,8 +555,30 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
       )}
 
       {/* Data Table */}
-      <div className="glass-card rounded-xl flex-1 flex flex-col overflow-hidden min-h-0">
-        <div className="flex-1 overflow-auto aero-scroll">
+      <div className="glass-card rounded-xl flex-1 flex flex-col overflow-hidden min-h-0 relative">
+        {/* Scroll indicators */}
+        {scrollInfo.top && (
+          <div className="absolute top-11 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+            <div className="flex flex-col items-center gap-0.5 opacity-40 animate-pulse">
+              <ChevronDown className="w-4 h-4 text-[#64b5f6] rotate-180" />
+              <span className="text-[9px] text-[#64b5f6]">scroll atas</span>
+            </div>
+          </div>
+        )}
+        {scrollInfo.left && (
+          <div className="absolute top-1/2 left-2 -translate-y-1/2 z-10 pointer-events-none">
+            <div className="flex flex-col items-center gap-0.5 opacity-40 animate-pulse">
+              <ChevronRight className="w-4 h-4 text-[#64b5f6] rotate-180" />
+              <span className="text-[9px] text-[#64b5f6]" style={{writingMode:'vertical-lr'}}>scroll</span>
+            </div>
+          </div>
+        )}
+        <div
+          ref={tableBodyRef}
+          onScroll={updateScrollInfo}
+          className="flex-1 overflow-auto aero-scroll"
+          style={{ maxHeight: 'calc(20 * 2.4rem + 2.6rem)' }}
+        >
           <table className="aero-table">
             <thead>
               <tr>
@@ -579,7 +610,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               </tr>
             </thead>
             <tbody>
-              {pagedRows.map((row) => (
+              {filteredRows.map((row) => (
                 <tr key={row.id}>
                   {BASE_COLUMNS.map(col => {
                     const val = getCellValue(row, col.key);
@@ -667,42 +698,20 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           </table>
         </div>
 
-        {/* Pagination */}
+        {/* Info bar with scroll hints */}
         <div className="flex items-center justify-between p-3 border-t border-white/5">
           <p className="text-xs text-[#546e7a]">
-            Menampilkan {page * pageSize + 1}-{Math.min((page + 1) * pageSize, filteredRows.length)} dari {filteredRows.length} data
+            Total {filteredRows.length} data{filteredRows.length !== rows.length ? ` (filter dari {rows.length})` : ''}
           </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="p-1.5 rounded-md glass-btn disabled:opacity-30"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const p = page <= 2 ? i : page >= totalPages - 3 ? totalPages - 5 + i : page - 2 + i;
-              if (p < 0 || p >= totalPages) return null;
-              return (
-                <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  className={`w-8 h-8 rounded-md text-xs transition-all ${p === page
-                    ? 'glass-btn text-[#64b5f6]'
-                    : 'text-[#78909c] hover:bg-white/5'
-                    }`}
-                >
-                  {p + 1}
-                </button>
-              );
-            })}
-            <button
-              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-              className="p-1.5 rounded-md glass-btn disabled:opacity-30"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-3 text-[10px] text-[#546e7a]">
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
+              scroll atas/bawah
+            </span>
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+              scroll kiri/kanan
+            </span>
           </div>
         </div>
       </div>
