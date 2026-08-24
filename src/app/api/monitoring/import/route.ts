@@ -202,25 +202,25 @@ export async function POST(request: NextRequest) {
     const fileHeaders = Object.keys(rows[0]);
     const { baseMap, customHeaders } = autoDetectMapping(fileHeaders);
 
+    if (mode === 'replace') {
+      await db.monitoringRow.deleteMany();
+      await db.customColumn.deleteMany();
+    }
+
     const existingCustomCols = await db.customColumn.findMany();
     const customColMap: Record<string, string> = {};
 
-    for (const h of customHeaders) {
+    for (let i = 0; i < customHeaders.length; i++) {
+      const h = customHeaders[i];
       const colName = h.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+      if (!colName || colName.startsWith('__empty')) continue;
       let existing = existingCustomCols.find(c => c.name === colName || c.label === h);
       if (!existing) {
         existing = await db.customColumn.create({
-          data: { name: colName, label: h, order: existingCustomCols.length + 1 },
+          data: { name: colName, label: h, order: existingCustomCols.length + i + 1 },
         });
       }
       customColMap[h] = existing.id;
-    }
-
-    if (mode === 'replace') {
-      const count = await db.monitoringRow.count();
-      if (count > 0) {
-        await db.monitoringRow.deleteMany();
-      }
     }
 
     let startOrder = 1;
