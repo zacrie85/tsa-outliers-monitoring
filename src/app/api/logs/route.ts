@@ -10,10 +10,19 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const action = searchParams.get('action');
     const userId = searchParams.get('userId');
+    const exportAll = searchParams.get('export') === 'all';
 
     const where: any = {};
     if (action) where.action = action;
     if (userId) where.userId = userId;
+
+    if (exportAll) {
+      const logs = await db.auditLog.findMany({
+        where,
+        orderBy: { timestamp: 'desc' },
+      });
+      return NextResponse.json({ logs });
+    }
 
     const [logs, total] = await Promise.all([
       db.auditLog.findMany({

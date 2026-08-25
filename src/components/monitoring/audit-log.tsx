@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Filter, Download, Loader2 } from 'lucide-react';
 
 interface LogEntry {
   id: string;
@@ -38,6 +38,7 @@ export function AuditLog() {
   const [search, setSearch] = useState('');
   const [filterAction, setFilterAction] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const limit = 30;
 
   const fetchLogs = useCallback(async () => {
@@ -77,6 +78,42 @@ export function AuditLog() {
     );
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ export: 'all' });
+      if (filterAction) params.set('action', filterAction);
+      const res = await fetch(`/api/logs?${params}`);
+      const { logs: allLogs } = await res.json();
+
+      const XLSX = await import('xlsx');
+      const rows = allLogs.map((log: LogEntry) => ({
+        Waktu: new Date(log.timestamp).toLocaleString('id-ID', {
+          day: '2-digit', month: 'short', year: 'numeric',
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+        }),
+        Pengguna: log.userName,
+        Aksi: (ACTION_LABELS[log.action] || { label: log.action }).label,
+        Kolom: log.colLabel || log.colKey || '-',
+        'Nilai Lama': log.oldValue || '-',
+        'Nilai Baru': log.newValue || '-',
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [
+        { wch: 24 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 40 }, { wch: 40 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Audit Log');
+      const filename = `audit-log_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    } catch (err) {
+      console.error('Export error:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full gap-4">
       {/* Toolbar */}
@@ -91,6 +128,14 @@ export function AuditLog() {
             className="w-full pl-10 pr-4 py-2.5 glass-input rounded-lg text-sm"
           />
         </div>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm transition-all hover:bg-[#66bb6a]/10 text-[#66bb6a] disabled:opacity-50"
+        >
+          {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          {exporting ? 'Mengexport...' : 'Export Excel'}
+        </button>
         <button
           onClick={() => setShowFilters(!showFilters)}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm transition-all ${showFilters ? 'glass-btn' : 'hover:bg-white/5 text-[#78909c]'}`}
