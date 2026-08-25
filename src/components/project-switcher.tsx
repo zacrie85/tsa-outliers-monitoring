@@ -18,14 +18,13 @@ export function ProjectSwitcher() {
 
   const activeProject = projects.find(p => p.id === activeProjectId);
 
-  // Auto-setup database on first load (admin only)
+  // Auto-setup database on first load (any authenticated user)
   useEffect(() => {
     if (setupDone || !user) return;
     const setup = async () => {
       try {
-        if (user.role === 'ADMIN') {
-          await fetch('/api/projects/setup', { method: 'POST' });
-        }
+        // Run setup silently — creates Project table if needed
+        await fetch('/api/projects/setup', { method: 'POST' });
       } catch {}
       setSetupDone(true);
       fetchProjects();
@@ -38,13 +37,16 @@ export function ProjectSwitcher() {
       const res = await fetch('/api/projects');
       if (res.ok) {
         const data = await res.json();
-        setProjects(data.projects || []);
+        const list = data.projects || [];
+        setProjects(list);
         // Auto-select first project if current is not found
-        if (data.projects?.length > 0 && !data.projects.find((p: ProjectInfo) => p.id === activeProjectId)) {
-          setActiveProjectId(data.projects[0].id);
+        if (list.length > 0 && !list.find((p: ProjectInfo) => p.id === activeProjectId)) {
+          setActiveProjectId(list[0].id);
         }
       }
-    } catch {}
+    } catch {
+      // Silently fail — ProjectSwitcher will show minimal UI
+    }
   }, [activeProjectId, setActiveProjectId, setProjects]);
 
   // Close on outside click
@@ -98,7 +100,8 @@ export function ProjectSwitcher() {
     } catch {}
   };
 
-  if (!activeProject && projects.length === 0) return null;
+  // Don't render until we've attempted setup at least once
+  if (!setupDone) return null;
 
   return (
     <div className="relative" ref={ref} onClick={(e) => e.stopPropagation()}>

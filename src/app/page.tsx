@@ -34,7 +34,11 @@ export default function HomePage() {
         if (res.ok) return res.json();
         throw new Error('Not authenticated');
       })
-      .then(data => setUser(data.user))
+      .then(async data => {
+        setUser(data.user);
+        // Auto-setup Project table after login (creates table if missing)
+        try { await fetch('/api/projects/setup', { method: 'POST' }); } catch {}
+      })
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, [setUser]);
