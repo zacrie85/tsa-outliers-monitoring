@@ -400,18 +400,41 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
     setDownloading(true);
     try {
       const XLSX = await import('xlsx');
-      const data: (string | number)[][] = [pivotResult.headers];
+      // Build header: split 'Row Labels' into individual field names
+      const rowFieldLabels = rowFields.map(k => fieldMap[k]?.label || k);
+      const headerRow: (string | number)[] = [
+        ...(rowFieldLabels.length > 1 ? rowFieldLabels : ['Row Labels']),
+        ...pivotResult.headers.slice(1)
+      ];
+      const data: (string | number)[][] = [headerRow];
       pivotResult.dataRows.forEach(dr => {
-        data.push([dr.label, ...dr.values] as (string | number)[]);
+        if (dr.isTotal) {
+          // Grand Total row: label in first col, rest empty
+          const row: (string | number)[] = rowFieldLabels.length > 1
+            ? ['Grand Total', ...Array(rowFieldLabels.length - 1).fill(''), ...dr.values]
+            : [dr.label, ...dr.values];
+          data.push(row);
+        } else {
+          // Split 'Banten | Tangerang | Cikupa' into separate columns
+          const parts = dr.label.split(' | ');
+          const row: (string | number)[] = [
+            ...(rowFieldLabels.length > 1 ? parts : [dr.label]),
+            ...dr.values
+          ];
+          data.push(row);
+        }
       });
       const ws = XLSX.utils.aoa_to_sheet(data);
-      ws['!cols'] = [{ wch: 24 }, ...pivotResult.headers.slice(1).map(() => ({ wch: 16 }))];
+      ws['!cols'] = [
+        ...rowFieldLabels.map(() => ({ wch: 20 })),
+        ...pivotResult.headers.slice(1).map(() => ({ wch: 16 }))
+      ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Pivot Table');
       XLSX.writeFile(wb, `pivot_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (e) { console.error(e); }
     setDownloading(false);
-  }, [pivotResult]);
+  }, [pivotResult, rowFields, fieldMap]);
 
   const handleDownloadCSV = useCallback(() => {
     if (pivotResult.dataRows.length === 0) return;
