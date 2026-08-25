@@ -8,8 +8,9 @@ import { AuditLog } from '@/components/monitoring/audit-log';
 import { DashboardCharts } from '@/components/dashboard/dashboard-charts';
 import { AdminPanel } from '@/components/admin/admin-panel';
 import { SettingsPanel } from '@/components/settings-panel';
+import { PivotCharts } from '@/components/pivot/pivot-charts';
 import {
-  Table2, History, BarChart3, Shield, LogOut, User, Settings, Eye,
+  Table2, History, BarChart3, Shield, LogOut, User, Settings, Eye, LayoutGrid,
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -53,6 +54,7 @@ export default function HomePage() {
     { id: 'monitoring' as const, label: 'Monitoring', icon: Table2 },
     { id: 'logs' as const, label: 'Audit Log', icon: History },
     { id: 'dashboard' as const, label: 'Dashboard', icon: BarChart3 },
+    { id: 'pivot' as const, label: 'Pivot', icon: LayoutGrid },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
     ...(user.role === 'ADMIN' ? [{ id: 'admin' as const, label: 'Admin', icon: Shield }] : []),
   ];
@@ -139,6 +141,7 @@ export default function HomePage() {
           {activeTab === 'monitoring' && <MonitoringTable viewer={isViewer} />}
           {activeTab === 'logs' && <AuditLog />}
           {activeTab === 'dashboard' && <DashboardCharts />}
+          {activeTab === 'pivot' && <PivotCharts />}
           {activeTab === 'settings' && <SettingsPanel />}
           {activeTab === 'admin' && <AdminPanel />}
         </main>
