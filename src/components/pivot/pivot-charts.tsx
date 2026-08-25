@@ -552,7 +552,16 @@ function computeAgg(items: MonitoringRow[], method: string): number {
   }
 }
 
-function PivotTableSection({ rows, allColOptions, defaultRowField = 'provinsi', defaultColField = 'klasifikasiTsa', tableTitle, accentFrom = '#ba68c8', accentTo = '#64b5f6', iconColor: iconClr = '#ba68c8' }: {
+const PIVOT_ACCENTS = [
+  { from: '#ba68c8', to: '#64b5f6', icon: '#ba68c8' },
+  { from: '#64b5f6', to: '#4dd0e1', icon: '#64b5f6' },
+  { from: '#4dd0e1', to: '#66bb6a', icon: '#4dd0e1' },
+  { from: '#ffb74d', to: '#ef5350', icon: '#ffb74d' },
+  { from: '#ef5350', to: '#ba68c8', icon: '#ef5350' },
+  { from: '#81c784', to: '#64b5f6', icon: '#81c784' },
+];
+
+function PivotTableSection({ rows, allColOptions, defaultRowField = 'provinsi', defaultColField = 'klasifikasiTsa', tableTitle, accentFrom = '#ba68c8', accentTo = '#64b5f6', iconColor: iconClr = '#ba68c8', onRemove }: {
   rows: MonitoringRow[];
   allColOptions: { key: string; label: string }[];
   defaultRowField?: string;
@@ -561,6 +570,7 @@ function PivotTableSection({ rows, allColOptions, defaultRowField = 'provinsi', 
   accentFrom?: string;
   accentTo?: string;
   iconColor?: string;
+  onRemove?: () => void;
 }) {
   const [rowField, setRowField] = useState(defaultRowField);
   const [colField, setColField] = useState(defaultColField);
@@ -640,10 +650,15 @@ function PivotTableSection({ rows, allColOptions, defaultRowField = 'provinsi', 
           <div className="w-8 h-8 rounded-xl border flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${accentFrom}20, ${accentTo}10)`, borderColor: `${accentFrom}33` }}>
             <CornerDownRight className="w-4 h-4" style={{ color: iconClr }} />
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-white">{tableTitle || 'Pivot Table'}</h3>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-bold text-white truncate">{tableTitle || 'Pivot Table'}</h3>
             <p className="text-[10px] text-[#546e7a]">Cross-tabulation — Row x Column dengan agregasi</p>
           </div>
+          {onRemove && (
+            <button onClick={onRemove} className="p-1.5 rounded-lg hover:bg-white/5 text-[#37474f] hover:text-[#ef5350] transition-all flex-shrink-0" title="Hapus Pivot Table">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
         {/* Selector row */}
         <div className="flex flex-wrap items-end gap-3">
@@ -732,12 +747,22 @@ function PivotTableSection({ rows, allColOptions, defaultRowField = 'provinsi', 
   );
 }
 
+interface PivotTableConfig {
+  id: string;
+  title: string;
+  rowField: string;
+  colField: string;
+}
+
 export function PivotCharts() {
   const [charts, setCharts] = useState<PivotChart[]>(() =>
     Array.from({ length: 8 }, (_, i) => createEmptyChart(i))
   );
   const [rows, setRows] = useState<MonitoringRow[]>([]);
   const [customCols, setCustomCols] = useState<any[]>([]);
+  const [pivotTables, setPivotTables] = useState<PivotTableConfig[]>([
+    { id: 'pt-1', title: 'Pivot Table 1', rowField: 'provinsi', colField: 'klasifikasiTsa' },
+  ]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -769,6 +794,22 @@ export function PivotCharts() {
     setCharts(prev => [...prev, createEmptyChart(prev.length)]);
   };
 
+  const addPivotTable = () => {
+    setPivotTables(prev => [
+      ...prev,
+      {
+        id: `pt-${Date.now()}`,
+        title: `Pivot Table ${prev.length + 1}`,
+        rowField: 'provinsi',
+        colField: 'picTsa',
+      },
+    ]);
+  };
+
+  const removePivotTable = (index: number) => {
+    setPivotTables(prev => prev.filter((_, i) => i !== index));
+  };
+
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="flex items-center justify-between">
@@ -788,18 +829,22 @@ export function PivotCharts() {
       </div>
 
       {/* Pivot Table Sections */}
-      <PivotTableSection key="pivot-1" rows={rows} allColOptions={allColOptions}
-        defaultRowField="provinsi" defaultColField="klasifikasiTsa"
-        tableTitle="Pivot Table 1 — Provinsi x Klasifikasi"
-        accentFrom="#ba68c8" accentTo="#64b5f6" iconColor="#ba68c8" />
-      <PivotTableSection key="pivot-2" rows={rows} allColOptions={allColOptions}
-        defaultRowField="provinsi" defaultColField="picTsa"
-        tableTitle="Pivot Table 2 — Provinsi x PIC TSA"
-        accentFrom="#64b5f6" accentTo="#4dd0e1" iconColor="#64b5f6" />
-      <PivotTableSection key="pivot-3" rows={rows} allColOptions={allColOptions}
-        defaultRowField="kabupaten" defaultColField="picTsa"
-        tableTitle="Pivot Table 3 — Kabupaten x PIC TSA"
-        accentFrom="#4dd0e1" accentTo="#66bb6a" iconColor="#4dd0e1" />
+      <div className="flex flex-col gap-4">
+        {pivotTables.map((pt, i) => {
+          const accent = PIVOT_ACCENTS[i % PIVOT_ACCENTS.length];
+          return (
+            <PivotTableSection key={pt.id} rows={rows} allColOptions={allColOptions}
+              defaultRowField={pt.rowField} defaultColField={pt.colField}
+              tableTitle={pt.title}
+              accentFrom={accent.from} accentTo={accent.to} iconColor={accent.icon}
+              onRemove={pivotTables.length > 1 ? () => removePivotTable(i) : undefined} />
+          );
+        })}
+        <button onClick={addPivotTable}
+          className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-white/[0.06] text-[#546e7a] hover:text-[#90caf9] hover:border-[#64b5f6]/20 hover:bg-[#64b5f6]/[0.02] transition-all text-xs font-medium">
+          <Plus className="w-4 h-4" /> Tambah Pivot Table
+        </button>
+      </div>
 
       <div className="flex-1 overflow-y-auto aero-scroll pb-4">
         {charts.length === 0 ? (
