@@ -36,9 +36,13 @@ const BASE_COL_OPTIONS = [
   { key: 'kabupaten', label: 'Kabupaten' },
   { key: 'kecamatan', label: 'Kecamatan' },
   { key: 'kelurahan', label: 'Kelurahan' },
+  { key: 'kelRwSiteName', label: 'Kel RW/Site Name' },
+  { key: 'desaPerum', label: 'Desa/Perum' },
   { key: 'categoryBak', label: 'Category BAK' },
   { key: 'klasifikasiTsa', label: 'Klasifikasi TSA' },
   { key: 'picTsa', label: 'PIC TSA' },
+  { key: 'remarksTsa', label: 'Remarks TSA' },
+  { key: 'remarksJlm', label: 'Remarks JLM' },
 ];
 
 const AGGREGATIONS = [
@@ -76,16 +80,12 @@ interface PivotChart {
 
 interface MonitoringRow {
   id: string;
-  provinsi: string;
-  kabupaten: string;
-  kecamatan: string;
-  kelurahan: string;
-  categoryBak: string;
-  klasifikasiTsa: string;
-  picTsa: string;
-  homepass: number;
-  odp: number;
-  customData: string;
+  orderNum: number; indexNum: number;
+  provinsi: string; kabupaten: string; kecamatan: string; kelurahan: string;
+  kelRwSiteName: string; desaPerum: string;
+  categoryBak: string; klasifikasiTsa: string; picTsa: string;
+  remarksTsa: string; remarksJlm: string;
+  homepass: number; odp: number; customData: string;
 }
 
 function createEmptyChart(index: number): PivotChart {

@@ -13,8 +13,11 @@ import {
 
 interface MonitoringRow {
   id: string;
+  orderNum: number; indexNum: number;
   provinsi: string; kabupaten: string; kecamatan: string; kelurahan: string;
+  kelRwSiteName: string; desaPerum: string;
   categoryBak: string; klasifikasiTsa: string; picTsa: string;
+  remarksTsa: string; remarksJlm: string;
   homepass: number; odp: number; customData: string;
 }
 
@@ -55,9 +58,14 @@ const BASE_FIELDS: FieldDef[] = [
   { key: 'kabupaten', label: 'Kabupaten', isNumeric: false },
   { key: 'kecamatan', label: 'Kecamatan', isNumeric: false },
   { key: 'kelurahan', label: 'Kelurahan', isNumeric: false },
+  { key: 'kelRwSiteName', label: 'Kel RW/Site Name', isNumeric: false },
+  { key: 'desaPerum', label: 'Desa/Perum', isNumeric: false },
   { key: 'categoryBak', label: 'Category BAK', isNumeric: false },
   { key: 'klasifikasiTsa', label: 'Klasifikasi TSA', isNumeric: false },
   { key: 'picTsa', label: 'PIC TSA', isNumeric: false },
+  { key: 'remarksTsa', label: 'Remarks TSA', isNumeric: false },
+  { key: 'remarksJlm', label: 'Remarks JLM', isNumeric: false },
+  { key: 'indexNum', label: 'No', isNumeric: true },
   { key: 'homepass', label: 'Homepass', isNumeric: true },
   { key: 'odp', label: 'ODP', isNumeric: true },
 ];
@@ -82,6 +90,8 @@ function computeValueAgg(items: MonitoringRow[], va: ValueAgg): number {
   const nums = items.map(r => {
     if (va.fieldKey === 'homepass') return r.homepass || 0;
     if (va.fieldKey === 'odp') return r.odp || 0;
+    if (va.fieldKey === 'indexNum') return r.indexNum || 0;
+    if (va.fieldKey === 'orderNum') return r.orderNum || 0;
     return parseFloat(getFieldValue(r, va.fieldKey)) || 0;
   });
   if (nums.length === 0) return 0;
