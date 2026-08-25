@@ -552,9 +552,18 @@ function computeAgg(items: MonitoringRow[], method: string): number {
   }
 }
 
-function PivotTableSection({ rows, allColOptions }: { rows: MonitoringRow[]; allColOptions: { key: string; label: string }[] }) {
-  const [rowField, setRowField] = useState('provinsi');
-  const [colField, setColField] = useState('klasifikasiTsa');
+function PivotTableSection({ rows, allColOptions, defaultRowField = 'provinsi', defaultColField = 'klasifikasiTsa', tableTitle, accentFrom = '#ba68c8', accentTo = '#64b5f6', iconColor: iconClr = '#ba68c8' }: {
+  rows: MonitoringRow[];
+  allColOptions: { key: string; label: string }[];
+  defaultRowField?: string;
+  defaultColField?: string;
+  tableTitle?: string;
+  accentFrom?: string;
+  accentTo?: string;
+  iconColor?: string;
+}) {
+  const [rowField, setRowField] = useState(defaultRowField);
+  const [colField, setColField] = useState(defaultColField);
   const [aggMethod, setAggMethod] = useState('count');
   const [showTable, setShowTable] = useState(false);
 
@@ -624,15 +633,15 @@ function PivotTableSection({ rows, allColOptions }: { rows: MonitoringRow[]; all
 
   return (
     <div className="relative rounded-2xl overflow-hidden border border-white/[0.06] bg-gradient-to-br from-[#111827]/80 to-[#0d1117]/90 backdrop-blur-xl">
-      <div className="absolute top-0 inset-x-0 h-[2px]" style={{ background: 'linear-gradient(90deg, transparent, #ba68c8, #64b5f6, transparent)' }} />
+      <div className="absolute top-0 inset-x-0 h-[2px]" style={{ background: `linear-gradient(90deg, transparent, ${accentFrom}, ${accentTo}, transparent)` }} />
       {/* Header */}
       <div className="relative px-5 pt-4 pb-3">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#ba68c8]/20 to-[#64b5f6]/10 border border-[#ba68c8]/20 flex items-center justify-center">
-            <CornerDownRight className="w-4 h-4 text-[#ba68c8]" />
+          <div className="w-8 h-8 rounded-xl border flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${accentFrom}20, ${accentTo}10)`, borderColor: `${accentFrom}33` }}>
+            <CornerDownRight className="w-4 h-4" style={{ color: iconClr }} />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white">Pivot Table</h3>
+            <h3 className="text-sm font-bold text-white">{tableTitle || 'Pivot Table'}</h3>
             <p className="text-[10px] text-[#546e7a]">Cross-tabulation — Row x Column dengan agregasi</p>
           </div>
         </div>
@@ -658,7 +667,8 @@ function PivotTableSection({ rows, allColOptions }: { rows: MonitoringRow[]; all
           </div>
           <div className="flex gap-2">
             <button onClick={() => setShowTable(!showTable)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-gradient-to-r from-[#ba68c8]/20 to-[#64b5f6]/10 border border-[#ba68c8]/20 text-[#ce93d8] hover:from-[#ba68c8]/30 hover:to-[#64b5f6]/20 transition-all">
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium border transition-all"
+              style={{ background: `linear-gradient(to right, ${accentFrom}20, ${accentTo}10)`, borderColor: `${accentFrom}33`, color: accentFrom }}>  
               {showTable ? 'Tutup Tabel' : 'Tampilkan Pivot'}
             </button>
             {showTable && hasData && (
@@ -777,8 +787,19 @@ export function PivotCharts() {
         </button>
       </div>
 
-      {/* Pivot Table Section */}
-      <PivotTableSection rows={rows} allColOptions={allColOptions} />
+      {/* Pivot Table Sections */}
+      <PivotTableSection key="pivot-1" rows={rows} allColOptions={allColOptions}
+        defaultRowField="provinsi" defaultColField="klasifikasiTsa"
+        tableTitle="Pivot Table 1 — Provinsi x Klasifikasi"
+        accentFrom="#ba68c8" accentTo="#64b5f6" iconColor="#ba68c8" />
+      <PivotTableSection key="pivot-2" rows={rows} allColOptions={allColOptions}
+        defaultRowField="provinsi" defaultColField="picTsa"
+        tableTitle="Pivot Table 2 — Provinsi x PIC TSA"
+        accentFrom="#64b5f6" accentTo="#4dd0e1" iconColor="#64b5f6" />
+      <PivotTableSection key="pivot-3" rows={rows} allColOptions={allColOptions}
+        defaultRowField="kabupaten" defaultColField="picTsa"
+        tableTitle="Pivot Table 3 — Kabupaten x PIC TSA"
+        accentFrom="#4dd0e1" accentTo="#66bb6a" iconColor="#4dd0e1" />
 
       <div className="flex-1 overflow-y-auto aero-scroll pb-4">
         {charts.length === 0 ? (
