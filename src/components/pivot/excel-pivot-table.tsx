@@ -33,6 +33,15 @@ interface ValueAgg {
 
 type ZoneName = 'rows' | 'columns' | 'values' | 'filters';
 
+interface PivotPersistState {
+  rowFields: string[];
+  colFields: string[];
+  valueFields: ValueAgg[];
+  filterFields: string[];
+  activeFilters: Record<string, string[]>;
+  showPanel: boolean;
+}
+
 const AGG_OPTIONS: { value: ValueAgg['aggType']; label: string }[] = [
   { value: 'count', label: 'Count' },
   { value: 'sum', label: 'Sum' },
@@ -161,7 +170,7 @@ function DropZone({ icon: Icon, label, accentColor, children, onDrop, isEmpty }:
    Main Component
    ═══════════════════════════════════════════════════ */
 
-export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; customCols: any[] }) {
+export function ExcelPivotTable({ rows, customCols, instanceId = 'ep-default' }: { rows: MonitoringRow[]; customCols: any[]; instanceId?: string }) {
   const [showPanel, setShowPanel] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [rowFields, setRowFields] = useState<string[]>([]);
@@ -174,6 +183,47 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
   const [downloading, setDownloading] = useState(false);
   const aggIdCounter = useRef(0);
   const nextAggId = useCallback(() => `va-${++aggIdCounter.current}`, []);
+  const mounted = useRef(false);
+
+  // Ensure aggIdCounter is always higher than any loaded IDs
+  const maxLoadedId = useRef(0);
+
+  // Load persisted state from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`pivot-excel-${instanceId}`);
+      if (raw) {
+        const saved: PivotPersistState = JSON.parse(raw);
+        if (saved.rowFields) setRowFields(saved.rowFields);
+        if (saved.colFields) setColFields(saved.colFields);
+        if (saved.valueFields) {
+          setValueFields(saved.valueFields);
+          // Sync counter so new IDs don't collide
+          saved.valueFields.forEach(v => {
+            const num = parseInt(v.id.replace('va-', ''), 10);
+            if (!isNaN(num) && num > maxLoadedId.current) maxLoadedId.current = num;
+          });
+          aggIdCounter.current = maxLoadedId.current;
+        }
+        if (saved.filterFields) setFilterFields(saved.filterFields);
+        if (saved.activeFilters) setActiveFilters(saved.activeFilters);
+        if (saved.showPanel !== undefined) setShowPanel(saved.showPanel);
+      }
+    } catch (e) { console.error('Failed to load pivot state:', e); }
+    mounted.current = true;
+  }, [instanceId]);
+
+  // Debounced save to localStorage
+  useEffect(() => {
+    if (!mounted.current) return;
+    const timer = setTimeout(() => {
+      const state: PivotPersistState = {
+        rowFields, colFields, valueFields, filterFields, activeFilters, showPanel,
+      };
+      try { localStorage.setItem(`pivot-excel-${instanceId}`, JSON.stringify(state)); } catch (e) { /* quota exceeded */ }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [rowFields, colFields, valueFields, filterFields, activeFilters, showPanel, instanceId]);
 
   /* ── Build all fields ── */
   const allFields: FieldDef[] = useMemo(() => {

@@ -1059,6 +1059,31 @@ export function PivotCharts() {
     setCharts(prev => [...prev, createEmptyChart(prev.length)]);
   };
 
+  /* ── Excel-Style Pivot Table instances ── */
+  const EXCEL_PIVOT_KEY = 'pivot-excel-instances';
+  const [excelPivotIds, setExcelPivotIds] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return ['ep-1'];
+    try {
+      const saved = localStorage.getItem(EXCEL_PIVOT_KEY);
+      if (saved) { const parsed = JSON.parse(saved); if (Array.isArray(parsed) && parsed.length > 0) return parsed; }
+    } catch {}
+    return ['ep-1'];
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(EXCEL_PIVOT_KEY, JSON.stringify(excelPivotIds)); } catch {}
+  }, [excelPivotIds]);
+
+  const addExcelPivot = () => {
+    const newId = `ep-${Date.now()}`;
+    setExcelPivotIds(prev => [...prev, newId]);
+  };
+
+  const removeExcelPivot = (id: string) => {
+    setExcelPivotIds(prev => prev.filter(i => i !== id));
+    try { localStorage.removeItem(`pivot-excel-${id}`); } catch {}
+  };
+
   const addPivotTable = () => {
     setPivotTables(prev => [
       ...prev,
@@ -1093,8 +1118,27 @@ export function PivotCharts() {
         </button>
       </div>
 
-      {/* Excel-Style Pivot Table */}
-      <ExcelPivotTable rows={rows} customCols={customCols} />
+      {/* Excel-Style Pivot Tables */}
+      <div className="flex flex-col gap-4">
+        {excelPivotIds.map((id) => (
+          <div key={id} className="relative group">
+            <ExcelPivotTable instanceId={id} rows={rows} customCols={customCols} />
+            {excelPivotIds.length > 1 && (
+              <button
+                onClick={() => removeExcelPivot(id)}
+                className="absolute top-3 right-14 z-20 opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] border border-transparent hover:border-[#ef5350]/20 transition-all"
+                title="Hapus Pivot Table ini"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
+        <button onClick={addExcelPivot}
+          className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-white/[0.06] text-[#546e7a] hover:text-[#4dd0e1] hover:border-[#4dd0e1]/20 hover:bg-[#4dd0e1]/[0.02] transition-all text-xs font-medium">
+          <Plus className="w-4 h-4" /> Tambah Excel-Style Pivot Table
+        </button>
+      </div>
 
       {/* Pivot Table Sections */}
       <div className="flex flex-col gap-4">
