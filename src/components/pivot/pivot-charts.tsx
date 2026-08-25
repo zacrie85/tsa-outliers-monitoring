@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Download, Plus, X, BarChart3, LineChart as LineChartIcon,
   PieChart as PieChartIcon, AreaChart, Edit3, Check, Table2,
-  ArrowUp, ArrowDown, TrendingUp, Minus, Hash, RefreshCw, Save, Loader2,
+  ArrowUp, ArrowDown, TrendingUp, Minus, Hash, RefreshCw, FileSpreadsheet, CornerDownRight,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart as RechartsArea, Area,
@@ -533,6 +533,195 @@ function PivotCard({
   );
 }
 
+/* ─── Cross-Tabulation Pivot Table ─── */
+
+function getRowValue(row: MonitoringRow, colKey: string): string {
+  if (colKey in row) return String((row as any)[colKey] || 'Lainnya');
+  try { return String(JSON.parse(row.customData || '{}')[colKey] || 'Lainnya'); } catch { return 'Lainnya'; }
+}
+
+function computeAgg(items: MonitoringRow[], method: string): number {
+  if (items.length === 0) return 0;
+  switch (method) {
+    case 'count': return items.length;
+    case 'sum_homepass': return items.reduce((s, r) => s + (r.homepass || 0), 0);
+    case 'sum_odp': return items.reduce((s, r) => s + (r.odp || 0), 0);
+    case 'avg_homepass': return Math.round(items.reduce((s, r) => s + (r.homepass || 0), 0) / items.length);
+    case 'avg_odp': return Math.round(items.reduce((s, r) => s + (r.odp || 0), 0) / items.length);
+    default: return items.length;
+  }
+}
+
+function PivotTableSection({ rows, allColOptions }: { rows: MonitoringRow[]; allColOptions: { key: string; label: string }[] }) {
+  const [rowField, setRowField] = useState('provinsi');
+  const [colField, setColField] = useState('klasifikasiTsa');
+  const [aggMethod, setAggMethod] = useState('count');
+  const [showTable, setShowTable] = useState(false);
+
+  const optStyle = { background: '#1a1a2e' };
+  const selCls = 'px-3 py-2 rounded-lg text-xs bg-white/[0.04] border border-white/[0.06] text-[#e0e0e0] focus:outline-none focus:border-white/[0.12] transition-all cursor-pointer';
+
+  // Build cross-tabulation
+  const { colLabels, rowLabels, matrix, rowTotals, colTotals, grandTotal } = (() => {
+    if (!rowField || !colField || rows.length === 0)
+      return { colLabels: [], rowLabels: [], matrix: {} as Record<string, Record<string, number>>, rowTotals: {} as Record<string, number>, colTotals: {} as Record<string, number>, grandTotal: 0 };
+
+    const buckets: Record<string, Record<string, MonitoringRow[]>> = {};
+    const rowSet = new Set<string>();
+    const colSet = new Set<string>();
+
+    rows.forEach(row => {
+      const rv = getRowValue(row, rowField);
+      const cv = getRowValue(row, colField);
+      rowSet.add(rv);
+      colSet.add(cv);
+      if (!buckets[rv]) buckets[rv] = {};
+      if (!buckets[rv][cv]) buckets[rv][cv] = [];
+      buckets[rv][cv].push(row);
+    });
+
+    const rLabels = [...rowSet].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    const cLabels = [...colSet].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+    const mtx: Record<string, Record<string, number>> = {};
+    const rTotals: Record<string, number> = {};
+    const cTotals: Record<string, number> = {};
+    let gt = 0;
+
+    rLabels.forEach(rl => {
+      mtx[rl] = {};
+      let rt = 0;
+      cLabels.forEach(cl => {
+        const items = buckets[rl]?.[cl] || [];
+        const v = computeAgg(items, aggMethod);
+        mtx[rl][cl] = v;
+        rt += v;
+        cTotals[cl] = (cTotals[cl] || 0) + v;
+      });
+      rTotals[rl] = rt;
+      gt += rt;
+    });
+
+    return { colLabels: cLabels, rowLabels: rLabels, matrix: mtx, rowTotals: rTotals, colTotals: cTotals, grandTotal: gt };
+  })();
+
+  const handleDownloadCSV = () => {
+    const header = ['Row Labels', ...colLabels, 'Grand Total'].join(',');
+    const body = rowLabels.map(rl => {
+      const vals = colLabels.map(cl => matrix[rl]?.[cl] ?? 0);
+      return [rl, ...vals, rowTotals[rl] ?? 0].join(',');
+    });
+    const totalRow = ['Grand Total', ...colLabels.map(cl => colTotals[cl] ?? 0), grandTotal].join(',');
+    const csv = [header, ...body, totalRow].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `pivot_table_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const hasData = rowLabels.length > 0 && colLabels.length > 0;
+
+  return (
+    <div className="relative rounded-2xl overflow-hidden border border-white/[0.06] bg-gradient-to-br from-[#111827]/80 to-[#0d1117]/90 backdrop-blur-xl">
+      <div className="absolute top-0 inset-x-0 h-[2px]" style={{ background: 'linear-gradient(90deg, transparent, #ba68c8, #64b5f6, transparent)' }} />
+      {/* Header */}
+      <div className="relative px-5 pt-4 pb-3">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#ba68c8]/20 to-[#64b5f6]/10 border border-[#ba68c8]/20 flex items-center justify-center">
+            <CornerDownRight className="w-4 h-4 text-[#ba68c8]" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white">Pivot Table</h3>
+            <p className="text-[10px] text-[#546e7a]">Cross-tabulation — Row x Column dengan agregasi</p>
+          </div>
+        </div>
+        {/* Selector row */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[160px]">
+            <label className="block text-[10px] text-[#546e7a] mb-1">Row Labels (Baris)</label>
+            <select value={rowField} onChange={(e) => setRowField(e.target.value)} className={selCls}>
+              {allColOptions.map(co => <option key={co.key} value={co.key} style={optStyle}>{co.label}</option>)}
+            </select>
+          </div>
+          <div className="min-w-[160px]">
+            <label className="block text-[10px] text-[#546e7a] mb-1">Column Labels (Kolom)</label>
+            <select value={colField} onChange={(e) => setColField(e.target.value)} className={selCls}>
+              {allColOptions.map(co => <option key={co.key} value={co.key} style={optStyle}>{co.label}</option>)}
+            </select>
+          </div>
+          <div className="min-w-[160px]">
+            <label className="block text-[10px] text-[#546e7a] mb-1">Agregasi</label>
+            <select value={aggMethod} onChange={(e) => setAggMethod(e.target.value)} className={selCls}>
+              {AGGREGATIONS.map(ag => <option key={ag.value} value={ag.value} style={optStyle}>{ag.label}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setShowTable(!showTable)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium bg-gradient-to-r from-[#ba68c8]/20 to-[#64b5f6]/10 border border-[#ba68c8]/20 text-[#ce93d8] hover:from-[#ba68c8]/30 hover:to-[#64b5f6]/20 transition-all">
+              {showTable ? 'Tutup Tabel' : 'Tampilkan Pivot'}
+            </button>
+            {showTable && hasData && (
+              <button onClick={handleDownloadCSV}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs hover:bg-white/5 text-[#78909c] hover:text-[#4dd0e1] transition-all">
+                <FileSpreadsheet className="w-3.5 h-3.5" /> CSV
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
+      {showTable && (
+        <div className="px-4 pb-4">
+          {!hasData ? (
+            <div className="flex items-center justify-center h-24 rounded-xl border border-dashed border-white/[0.06] text-[#37474f] text-xs">
+              Tidak ada data untuk ditampilkan
+            </div>
+          ) : (
+            <div className="overflow-auto aero-scroll rounded-xl border border-white/[0.06] max-h-[400px]">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="bg-gradient-to-r from-[#4a148c]/60 to-[#1a237e]/60">
+                    <th className="text-left px-3 py-2.5 text-white/90 font-semibold sticky left-0 z-10 min-w-[140px]" style={{ background: '#311b60e0', backdropFilter: 'blur(8px)' }}>Row Labels</th>
+                    {colLabels.map(cl => (
+                      <th key={cl} className="text-center px-3 py-2.5 text-white/90 font-semibold whitespace-nowrap">{cl}</th>
+                    ))}
+                    <th className="text-center px-3 py-2.5 text-white font-bold whitespace-nowrap border-l border-white/10">Grand Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rowLabels.map((rl, ri) => (
+                    <tr key={rl} className={ri % 2 === 0 ? 'bg-white/[0.02]' : ''}>
+                      <td className="px-3 py-2 text-[#e0e0e0] font-medium sticky left-0 whitespace-nowrap" style={{ background: ri % 2 === 0 ? '#ffffff06' : '#ffffff03', backdropFilter: 'blur(8px)' }}>{rl}</td>
+                      {colLabels.map(cl => {
+                        const v = matrix[rl]?.[cl] ?? 0;
+                        return (
+                          <td key={cl} className={`text-center px-3 py-2 font-mono whitespace-nowrap ${v > 0 ? 'text-[#e0e0e0]' : 'text-[#37474f]'}`}>{v.toLocaleString('id-ID')}</td>
+                        );
+                      })}
+                      <td className="text-center px-3 py-2 font-mono font-bold text-[#90caf9] border-l border-white/[0.06] whitespace-nowrap">{(rowTotals[rl] ?? 0).toLocaleString('id-ID')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-white/10 bg-white/[0.04]">
+                    <td className="px-3 py-2.5 text-white font-bold sticky left-0" style={{ background: '#ffffff0a', backdropFilter: 'blur(8px)' }}>Grand Total</td>
+                    {colLabels.map(cl => (
+                      <td key={cl} className="text-center px-3 py-2.5 font-mono font-bold text-[#ce93d8] whitespace-nowrap">{(colTotals[cl] ?? 0).toLocaleString('id-ID')}</td>
+                    ))}
+                    <td className="text-center px-3 py-2.5 font-mono font-black text-white text-sm border-l border-white/10 whitespace-nowrap">{grandTotal.toLocaleString('id-ID')}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PivotCharts() {
   const [charts, setCharts] = useState<PivotChart[]>(() =>
     Array.from({ length: 8 }, (_, i) => createEmptyChart(i))
@@ -556,6 +745,7 @@ export function PivotCharts() {
   useEffect(() => { void fetchData(); }, [fetchData]);
 
   const customColOptions = customCols.map((c: any) => ({ key: c.id, label: c.label }));
+  const allColOptions = [...BASE_COL_OPTIONS, ...customColOptions];
 
   const updateChart = useCallback((index: number, chart: PivotChart) => {
     setCharts(prev => prev.map((c, i) => i === index ? chart : c));
@@ -586,6 +776,9 @@ export function PivotCharts() {
           <Plus className="w-4 h-4" /> Tambah Chart
         </button>
       </div>
+
+      {/* Pivot Table Section */}
+      <PivotTableSection rows={rows} allColOptions={allColOptions} />
 
       <div className="flex-1 overflow-y-auto aero-scroll pb-4">
         {charts.length === 0 ? (
