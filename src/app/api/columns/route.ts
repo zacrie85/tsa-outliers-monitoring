@@ -56,28 +56,52 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const user = await requireAdmin();
-    const { id, label, divisionId, isLocked, order } = await request.json();
+    const { id, name, label, divisionId, isLocked, order } = await request.json();
 
     const existing = await db.customColumn.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json({ error: 'Kolom tidak ditemukan' }, { status: 404 });
     }
 
+    // If name (key) is being changed, migrate all rows' customData
+    if (name && name !== existing.name) {
+      const allRows = await db.monitoringRow.findMany({
+        select: { id: true, customData: true },
+      });
+      const updates = allRows
+        .filter(r => {
+          try { return r.customData && JSON.parse(r.customData)[existing.name] !== undefined; }
+          catch { return false; }
+        })
+        .map(r => {
+          const cd = JSON.parse(r.customData || '{}');
+          cd[name] = cd[existing.name];
+          delete cd[existing.name];
+          return { where: { id: r.id }, data: { customData: JSON.stringify(cd) } };
+        });
+      if (updates.length > 0) {
+        await Promise.all(updates.map(u => db.monitoringRow.update(u)));
+      }
+    }
+
     const column = await db.customColumn.update({
       where: { id },
-      data: { label, divisionId, isLocked, order },
+      data: {
+        ...(name ? { name } : {}),
+        label, divisionId, isLocked, order,
+      },
     });
 
     await db.auditLog.create({
       data: {
         userId: user.id,
         userName: user.name,
-        action: isLocked ? 'COL_LOCK' : 'COL_UNLOCK',
+        action: 'COL_EDIT',
         tableName: 'CustomColumn',
         rowId: id,
         colLabel: existing.label,
-        oldValue: String(existing.isLocked),
-        newValue: String(isLocked),
+        oldValue: JSON.stringify({ name: existing.name, label: existing.label, divisionId: existing.divisionId }),
+        newValue: JSON.stringify({ name: name || existing.name, label, divisionId }),
       },
     });
 

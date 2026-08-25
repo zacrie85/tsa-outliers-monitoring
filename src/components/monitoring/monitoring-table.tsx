@@ -5,7 +5,7 @@ import { useAppStore } from '@/store/app-store';
 import {
   Plus, Trash2, Search, Lock, Unlock, Settings,
   Download, X, Save, FileSpreadsheet, MapPin, ChevronDown, ChevronRight,
-  Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown, Upload, FileUp, Loader2, AlertCircle, Eraser, TriangleAlert
+  Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown, Upload, FileUp, Loader2, AlertCircle, Eraser, TriangleAlert, Pencil
 } from 'lucide-react';
 
 const BASE_COLUMNS = [
@@ -68,6 +68,10 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const [newColName, setNewColName] = useState('');
   const [newColLabel, setNewColLabel] = useState('');
   const [newColDivision, setNewColDivision] = useState('');
+  const [editingCol, setEditingCol] = useState<string | null>(null);
+  const [editColName, setEditColName] = useState('');
+  const [editColLabel, setEditColLabel] = useState('');
+  const [editColDivision, setEditColDivision] = useState('');
   const [showAddRow, setShowAddRow] = useState(false);
   const [newRow, setNewRow] = useState<any>({});
 
@@ -201,6 +205,41 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     try {
       await fetch(`/api/columns?id=${colId}`, { method: 'DELETE' });
       fetchData();
+    } catch (err) { console.error(err); }
+  };
+
+  const startEditColumn = (col: CustomColumn) => {
+    setEditingCol(col.id);
+    setEditColName(col.name);
+    setEditColLabel(col.label);
+    setEditColDivision(col.divisionId || '');
+  };
+
+  const cancelEditColumn = () => {
+    setEditingCol(null);
+    setEditColName('');
+    setEditColLabel('');
+    setEditColDivision('');
+  };
+
+  const handleEditColumn = async () => {
+    if (!editingCol || !editColName.trim() || !editColLabel.trim()) return;
+    const col = customCols.find(c => c.id === editingCol);
+    if (!col) return;
+    try {
+      const res = await fetch('/api/columns', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingCol,
+          name: editColName.toLowerCase().replace(/\s+/g, '_'),
+          label: editColLabel,
+          divisionId: editColDivision || null,
+          isLocked: col.isLocked,
+          order: col.order,
+        }),
+      });
+      if (res.ok) { cancelEditColumn(); fetchData(); }
     } catch (err) { console.error(err); }
   };
 
@@ -766,18 +805,45 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto aero-scroll">
               {customCols.map(col => (
-                <div key={col.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 group">
-                  <div className="flex items-center gap-3">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getDivisionColor(col.divisionId) }} />
-                    <span className="text-sm text-[#e0e0e0]">{col.label}</span>
-                    {col.division && (<span className="text-[10px] px-2 py-0.5 rounded-full badge-division" style={{ borderColor: col.division.color, color: col.division.color, backgroundColor: col.division.color + '15' }}>{col.division.name}</span>)}
-                    {col.isLocked && (<span className="badge-locked text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"><Lock className="w-3 h-3" /> Terkunci</span>)}
+                editingCol === col.id ? (
+                  <div key={col.id} className="p-3 rounded-lg bg-white/10 border border-[#42a5f5]/30 space-y-2">
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="flex-1 min-w-[120px]">
+                        <label className="block text-[10px] text-[#78909c] mb-1">Nama Kolom (Key)</label>
+                        <input value={editColName} onChange={(e) => setEditColName(e.target.value)} className="w-full px-2.5 py-1.5 glass-input rounded-md text-xs" />
+                      </div>
+                      <div className="flex-1 min-w-[120px]">
+                        <label className="block text-[10px] text-[#78909c] mb-1">Label Tampilan</label>
+                        <input value={editColLabel} onChange={(e) => setEditColLabel(e.target.value)} className="w-full px-2.5 py-1.5 glass-input rounded-md text-xs" />
+                      </div>
+                      <div className="flex-1 min-w-[120px]">
+                        <label className="block text-[10px] text-[#78909c] mb-1">Divisi</label>
+                        <select value={editColDivision} onChange={(e) => setEditColDivision(e.target.value)} className="w-full px-2.5 py-1.5 glass-input rounded-md text-xs">
+                          <option value="">Tanpa Divisi (Admin Only)</option>
+                          {divisions.map(d => (<option key={d.id} value={d.id} style={{ background: '#1a1a2e' }}>{d.name}</option>))}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={handleEditColumn} className="p-1.5 rounded-md hover:bg-[#66bb6a]/20 text-[#66bb6a]"><Check className="w-4 h-4" /></button>
+                        <button onClick={cancelEditColumn} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#ef5350]"><X className="w-4 h-4" /></button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => handleToggleLock(col)} className="p-1.5 rounded-md hover:bg-white/10 text-[#78909c] hover:text-white">{col.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}</button>
-                    <button onClick={() => handleDeleteColumn(col.id)} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#78909c] hover:text-[#ef5350]"><Trash2 className="w-3.5 h-3.5" /></button>
+                ) : (
+                  <div key={col.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 group">
+                    <div className="flex items-center gap-3">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getDivisionColor(col.divisionId) }} />
+                      <span className="text-sm text-[#e0e0e0]">{col.label}</span>
+                      {col.division && (<span className="text-[10px] px-2 py-0.5 rounded-full badge-division" style={{ borderColor: col.division.color, color: col.division.color, backgroundColor: col.division.color + '15' }}>{col.division.name}</span>)}
+                      {col.isLocked && (<span className="badge-locked text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"><Lock className="w-3 h-3" /> Terkunci</span>)}
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => startEditColumn(col)} className="p-1.5 rounded-md hover:bg-[#42a5f5]/10 text-[#78909c] hover:text-[#42a5f5]" title="Edit kolom"><Pencil className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => handleToggleLock(col)} className="p-1.5 rounded-md hover:bg-white/10 text-[#78909c] hover:text-white">{col.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}</button>
+                      <button onClick={() => handleDeleteColumn(col.id)} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#78909c] hover:text-[#ef5350]"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
                   </div>
-                </div>
+                )
               ))}
             </div>
           )}
