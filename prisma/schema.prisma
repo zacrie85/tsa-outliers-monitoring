@@ -7,6 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Project {
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  color       String          @default("#64b5f6")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  rows        MonitoringRow[]
+  columns     CustomColumn[]
+  charts      ChartConfig[]
+}
+
 model User {
   id         String   @id @default(cuid())
   username   String   @unique
@@ -30,7 +42,9 @@ model Division {
 }
 
 model MonitoringRow {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
+  projectId       String?
+  project         Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   orderNum        Int
   categoryBak     String   @default("")
   provinsi        String   @default("")
@@ -52,21 +66,23 @@ model MonitoringRow {
 }
 
 model CustomColumn {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
+  projectId  String?
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name       String   // Internal key name
   label      String   // Display label
-  order      Int      @default(0)
-  isLocked   Boolean  @default(false)
+  order      Int       @default(0)
+  isLocked   Boolean   @default(false)
   divisionId String?
   division   Division? @relation(fields: [divisionId], references: [id])
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 }
 
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String
   userName  String
-  action    String   // CELL_EDIT, ROW_ADD, ROW_DELETE, COL_ADD, COL_DELETE, COL_LOCK, COL_UNLOCK, LOGIN
+  action    String // CELL_EDIT, ROW_ADD, ROW_DELETE, COL_ADD, COL_DELETE, COL_LOCK, COL_UNLOCK, LOGIN
   tableName String   @default("MonitoringRow")
   rowId     String?
   colKey    String?
@@ -78,9 +94,11 @@ model AuditLog {
 }
 
 model ChartConfig {
-  id        String @id @default(cuid())
-  title     String @default("Chart")
-  chartType String @default("bar") // bar, line, pie, area, scatter, radar, treemap, funnel
-  config    String @default("{}") // JSON: { xAxis, yAxis, aggregation, filters }
-  order     Int    @default(0)
+  id        String    @id @default(cuid())
+  projectId String?
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String    @default("Chart")
+  chartType String    @default("bar") // bar, line, pie, area, scatter, radar, treemap, funnel
+  config    String    @default("{}") // JSON: { xAxis, yAxis, aggregation, filters }
+  order     Int       @default(0)
 }

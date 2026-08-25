@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
+import { getProjectId } from '@/lib/project-context';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const projectId = getProjectId(request.url);
     const columns = await db.customColumn.findMany({
+      where: { projectId },
       orderBy: { order: 'asc' },
       include: { division: true },
     });
@@ -19,14 +22,17 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAdmin();
     const { name, label, divisionId } = await request.json();
+    const projectId = getProjectId(request.url);
 
     const maxOrder = await db.customColumn.findFirst({
+      where: { projectId },
       orderBy: { order: 'desc' },
       select: { order: true },
     });
 
     const column = await db.customColumn.create({
       data: {
+        projectId,
         name,
         label,
         divisionId: divisionId || null,
@@ -66,6 +72,7 @@ export async function PUT(request: NextRequest) {
     // If name (key) is being changed, migrate all rows' customData
     if (name && name !== existing.name) {
       const allRows = await db.monitoringRow.findMany({
+        where: { projectId: existing.projectId || 'default' },
         select: { id: true, customData: true },
       });
       const updates = allRows

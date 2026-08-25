@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '@/store/app-store';
 import { LoginForm } from '@/components/login-form';
 import { MonitoringTable } from '@/components/monitoring/monitoring-table';
@@ -9,13 +9,24 @@ import { DashboardCharts } from '@/components/dashboard/dashboard-charts';
 import { AdminPanel } from '@/components/admin/admin-panel';
 import { SettingsPanel } from '@/components/settings-panel';
 import { PivotCharts } from '@/components/pivot/pivot-charts';
+import { ProjectSwitcher } from '@/components/project-switcher';
 import {
   Table2, History, BarChart3, Shield, LogOut, User, Settings, Eye, LayoutGrid,
 } from 'lucide-react';
 
 export default function HomePage() {
-  const { user, setUser, activeTab, setActiveTab } = useAppStore();
+  const { user, setUser, activeTab, setActiveTab, activeProjectId, projects } = useAppStore();
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleProjectSwitched = useCallback(() => {
+    setRefreshKey(k => k + 1);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('project-switched', handleProjectSwitched);
+    return () => window.removeEventListener('project-switched', handleProjectSwitched);
+  }, [handleProjectSwitched]);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -49,6 +60,7 @@ export default function HomePage() {
   }
 
   const isViewer = user.role === 'VIEWER';
+  const activeProject = projects.find(p => p.id === activeProjectId);
 
   const tabs = [
     { id: 'monitoring' as const, label: 'Monitoring', icon: Table2 },
@@ -81,7 +93,11 @@ export default function HomePage() {
               </div>
               <div>
                 <h1 className="text-sm font-bold text-white leading-tight">TSA Outliers Monitoring</h1>
-                <p className="text-[10px] text-[#546e7a]">138 Data Outlier &middot; 4 Provinsi</p>
+                <p className="text-[10px] text-[#546e7a]">
+                  {activeProject?._count
+                    ? `${activeProject._count.rows} Data ${activeProject.name}`
+                    : activeProject?.name || 'Loading...'}
+                </p>
               </div>
             </div>
 
@@ -107,8 +123,10 @@ export default function HomePage() {
               })}
             </nav>
 
-            {/* User Info */}
+            {/* Right: Project Switcher + User Info */}
             <div className="flex items-center gap-3">
+              <ProjectSwitcher />
+              <div className="w-px h-6 bg-white/[0.06]" />
               <div className="flex items-center gap-2">
                 {user.divisionName && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full border" style={{
@@ -138,18 +156,18 @@ export default function HomePage() {
 
         {/* Main Content */}
         <main className="flex-1 p-4 max-w-[1920px] mx-auto w-full" style={{ minHeight: 'calc(100vh - 60px)' }}>
-          {activeTab === 'monitoring' && <MonitoringTable viewer={isViewer} />}
-          {activeTab === 'logs' && <AuditLog />}
-          {activeTab === 'dashboard' && <DashboardCharts />}
-          {activeTab === 'pivot' && <PivotCharts />}
-          {activeTab === 'settings' && <SettingsPanel />}
-          {activeTab === 'admin' && <AdminPanel />}
+          {activeTab === 'monitoring' && <MonitoringTable key={refreshKey} viewer={isViewer} />}
+          {activeTab === 'logs' && <AuditLog key={refreshKey} />}
+          {activeTab === 'dashboard' && <DashboardCharts key={refreshKey} />}
+          {activeTab === 'pivot' && <PivotCharts key={refreshKey} />}
+          {activeTab === 'settings' && <SettingsPanel key={refreshKey} />}
+          {activeTab === 'admin' && <AdminPanel key={refreshKey} />}
         </main>
 
         {/* Footer */}
         <footer className="glass-nav mt-auto px-4 py-2 flex items-center justify-between">
           <p className="text-[10px] text-[#37474f]">TSA Outliers Monitoring System v2.0</p>
-          <p className="text-[10px] text-[#37474f]">Data per 11 Agustus 2026</p>
+          <p className="text-[10px] text-[#37474f]">Multi-Project Enabled</p>
         </footer>
       </div>
     </div>

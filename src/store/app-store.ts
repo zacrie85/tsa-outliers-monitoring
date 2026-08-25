@@ -9,11 +9,23 @@ export interface SessionUser {
   divisionName: string | null;
 }
 
+export interface ProjectInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  _count?: { rows: number; columns: number };
+}
+
 interface AppState {
   user: SessionUser | null;
   setUser: (user: SessionUser | null) => void;
   activeTab: 'monitoring' | 'logs' | 'dashboard' | 'pivot' | 'admin' | 'settings';
   setActiveTab: (tab: AppState['activeTab']) => void;
+  activeProjectId: string;
+  setActiveProjectId: (id: string) => void;
+  projects: ProjectInfo[];
+  setProjects: (projects: ProjectInfo[]) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -21,4 +33,8 @@ export const useAppStore = create<AppState>((set) => ({
   setUser: (user) => set({ user }),
   activeTab: 'monitoring',
   setActiveTab: (activeTab) => set({ activeTab }),
+  activeProjectId: 'default',
+  setActiveProjectId: (activeProjectId) => set({ activeProjectId }),
+  projects: [],
+  setProjects: (projects) => set({ projects }),
 }));

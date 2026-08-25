@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAppStore } from '@/store/app-store';
@@ -102,8 +103,8 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const fetchData = useCallback(async () => {
     try {
       const [rowsRes, colsRes, divRes] = await Promise.all([
-        fetch('/api/monitoring'),
-        fetch('/api/columns'),
+        apiFetch('/api/monitoring'),
+        apiFetch('/api/columns'),
         fetch('/api/divisions'),
       ]);
       const rowsData = await rowsRes.json();
@@ -245,7 +246,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
 
   const handleAddRow = async () => {
     try {
-      const res = await fetch('/api/monitoring', {
+      const res = await apiFetch('/api/monitoring', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRow),
@@ -460,6 +461,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
       const fd = new FormData();
       fd.append('file', importFile);
       fd.append('mode', importMode);
+      fd.append('projectId', useAppStore.getState().activeProjectId);
       const res = await fetch('/api/monitoring/import', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) { setImportError(data.error); return; }
@@ -481,7 +483,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     setClearing(true);
     setClearResult(null);
     try {
-      const res = await fetch('/api/monitoring/clear', { method: 'DELETE' });
+      const res = await apiFetch('/api/monitoring/clear', { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) { alert(data.error); return; }
       setClearResult(data);

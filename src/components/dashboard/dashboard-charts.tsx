@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Download, Settings, X, Save, BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, AreaChart, ScatterChart, Activity } from 'lucide-react';
@@ -341,9 +342,9 @@ export function DashboardCharts() {
   const fetchData = useCallback(async () => {
     try {
       const [chartsRes, rowsRes, colsRes] = await Promise.all([
-        fetch('/api/charts'),
-        fetch('/api/monitoring'),
-        fetch('/api/columns'),
+        apiFetch('/api/charts'),
+        apiFetch('/api/monitoring'),
+        apiFetch('/api/columns'),
       ]);
       const chartsData = await chartsRes.json();
       const rowsData = await rowsRes.json();
@@ -361,7 +362,7 @@ export function DashboardCharts() {
 
   const handleSaveChart = async (id: string, data: any) => {
     try {
-      await fetch('/api/charts', {
+      await apiFetch('/api/charts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, ...data }),

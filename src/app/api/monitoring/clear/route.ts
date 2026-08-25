@@ -1,20 +1,22 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
+import { getProjectId } from '@/lib/project-context';
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
     const user = await requireAuth();
     if (user.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Hanya admin yang bisa menghapus data' }, { status: 403 });
     }
 
-    const rowCounts = await db.monitoringRow.count();
-    const colCounts = await db.customColumn.count();
+    const projectId = getProjectId(request.url);
+    const rowCounts = await db.monitoringRow.count({ where: { projectId } });
+    const colCounts = await db.customColumn.count({ where: { projectId } });
 
     await db.$transaction([
-      db.monitoringRow.deleteMany(),
-      db.customColumn.deleteMany(),
+      db.monitoringRow.deleteMany({ where: { projectId } }),
+      db.customColumn.deleteMany({ where: { projectId } }),
     ]);
 
     await db.auditLog.create({

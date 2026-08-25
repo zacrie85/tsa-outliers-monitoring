@@ -1,4 +1,6 @@
 'use client';
+import { apiFetch } from '@/lib/api';
+import { useAppStore } from '@/store/app-store';
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
@@ -1032,8 +1034,8 @@ export function PivotCharts() {
   const fetchData = useCallback(async () => {
     try {
       const [rowsRes, colsRes] = await Promise.all([
-        fetch('/api/monitoring'),
-        fetch('/api/columns'),
+        apiFetch('/api/monitoring'),
+        apiFetch('/api/columns'),
       ]);
       const rowsData = await rowsRes.json();
       const colsData = await colsRes.json();
@@ -1059,20 +1061,22 @@ export function PivotCharts() {
     setCharts(prev => [...prev, createEmptyChart(prev.length)]);
   };
 
-  /* ── Excel-Style Pivot Table instances ── */
-  const EXCEL_PIVOT_KEY = 'pivot-excel-instances';
+  const activeProjectId = useAppStore(s => s.activeProjectId);
+
+  /* ── Excel-Style Pivot Table instances (per-project) ── */
+  const EXCEL_PIVOT_KEY = `pivot-excel-instances-${activeProjectId}`;
   const [excelPivotIds, setExcelPivotIds] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return ['ep-1'];
+    if (typeof window === 'undefined') return [];
     try {
-      const saved = localStorage.getItem(EXCEL_PIVOT_KEY);
+      const saved = localStorage.getItem(`pivot-excel-instances-${activeProjectId}`);
       if (saved) { const parsed = JSON.parse(saved); if (Array.isArray(parsed) && parsed.length > 0) return parsed; }
     } catch {}
     return ['ep-1'];
   });
 
   useEffect(() => {
-    try { localStorage.setItem(EXCEL_PIVOT_KEY, JSON.stringify(excelPivotIds)); } catch {}
-  }, [excelPivotIds]);
+    try { localStorage.setItem(`pivot-excel-instances-${activeProjectId}`, JSON.stringify(excelPivotIds)); } catch {}
+  }, [excelPivotIds, activeProjectId]);
 
   const addExcelPivot = () => {
     const newId = `ep-${Date.now()}`;

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
+import { getProjectId } from '@/lib/project-context';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await requireAuth();
+    const projectId = getProjectId(request.url);
     const charts = await db.chartConfig.findMany({
+      where: { projectId },
       orderBy: { order: 'asc' },
     });
     return NextResponse.json({ charts });

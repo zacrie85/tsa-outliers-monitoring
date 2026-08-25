@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
+import { getProjectId } from '@/lib/project-context';
 
 const BASE_FIELD_MAP: Record<string, { key: string; type: 'string' | 'number' }> = {
   'no': { key: 'orderNum', type: 'number' },
@@ -123,6 +124,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const mode = formData.get('mode') as string || 'replace';
+    const projectId = (formData.get('projectId') as string) || getProjectId(request.url);
 
     if (!file) {
       return NextResponse.json({ error: 'File tidak ditemukan' }, { status: 400 });
@@ -203,11 +205,11 @@ export async function POST(request: NextRequest) {
     const { baseMap, customHeaders } = autoDetectMapping(fileHeaders);
 
     if (mode === 'replace') {
-      await db.monitoringRow.deleteMany();
-      await db.customColumn.deleteMany();
+      await db.monitoringRow.deleteMany({ where: { projectId } });
+      await db.customColumn.deleteMany({ where: { projectId } });
     }
 
-    const existingCustomCols = await db.customColumn.findMany();
+    const existingCustomCols = await db.customColumn.findMany({ where: { projectId } });
     const customColMap: Record<string, string> = {};
 
     for (let i = 0; i < customHeaders.length; i++) {
@@ -225,12 +227,13 @@ export async function POST(request: NextRequest) {
 
     let startOrder = 1;
     if (mode === 'append') {
-      const maxOrder = await db.monitoringRow.findFirst({ orderBy: { orderNum: 'desc' }, select: { orderNum: true } });
+      const maxOrder = await db.monitoringRow.findFirst({ where: { projectId }, orderBy: { orderNum: 'desc' }, select: { orderNum: true } });
       startOrder = (maxOrder?.orderNum || 0) + 1;
     }
 
     const insertData = rows.map((row, idx) => {
       const data: any = {
+        projectId,
         orderNum: startOrder + idx,
         categoryBak: '',
         provinsi: '',

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
+import { getProjectId } from '@/lib/project-context';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
+    const projectId = getProjectId(request.url);
     const rows = await db.monitoringRow.findMany({
+      where: { projectId },
       orderBy: { orderNum: 'asc' },
     });
     return NextResponse.json({ rows });
@@ -23,7 +26,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Hanya admin yang bisa menambah baris' }, { status: 403 });
     }
     const body = await request.json();
+    const projectId = getProjectId(request.url);
     const maxOrder = await db.monitoringRow.findFirst({
+      where: { projectId },
       orderBy: { orderNum: 'desc' },
       select: { orderNum: true },
     });
@@ -31,6 +36,7 @@ export async function POST(request: NextRequest) {
 
     const row = await db.monitoringRow.create({
       data: {
+        projectId,
         orderNum: nextOrder,
         categoryBak: body.categoryBak || '',
         provinsi: body.provinsi || '',
