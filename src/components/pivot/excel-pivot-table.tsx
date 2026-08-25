@@ -25,6 +25,7 @@ interface FieldDef {
 }
 
 interface ValueAgg {
+  id: string;
   fieldKey: string;
   aggType: 'count' | 'sum' | 'avg' | 'min' | 'max';
   label: string;
@@ -170,6 +171,8 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({});
   const [contextChip, setContextChip] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const aggIdCounter = useRef(0);
+  const nextAggId = useCallback(() => `va-${++aggIdCounter.current}`, []);
 
   /* ── Build all fields ── */
   const allFields: FieldDef[] = useMemo(() => {
@@ -200,11 +203,22 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
     return null;
   }, [rowFields, colFields, valueFields, filterFields]);
 
+  // Check if a field is used in ANY zone (for checkbox display)
   const isFieldUsed = useCallback((key: string) => getFieldZone(key) !== null, [getFieldZone]);
 
+  // Check if a field is used in a SPECIFIC zone
+  const isFieldInZone = useCallback((key: string, zone: ZoneName) => {
+    if (zone === 'rows') return rowFields.includes(key);
+    if (zone === 'columns') return colFields.includes(key);
+    if (zone === 'values') return valueFields.some(v => v.fieldKey === key);
+    if (zone === 'filters') return filterFields.includes(key);
+    return false;
+  }, [rowFields, colFields, valueFields, filterFields]);
+
+  // Checkbox toggle: if not used anywhere → add to default zone; if used → remove from ALL zones
   const toggleField = useCallback((key: string) => {
     if (isFieldUsed(key)) {
-      // Remove from current zone
+      // Remove from ALL zones
       setRowFields(p => p.filter(k => k !== key));
       setColFields(p => p.filter(k => k !== key));
       setValueFields(p => p.filter(v => v.fieldKey !== key));
@@ -214,13 +228,34 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
       // Auto-assign based on type
       const field = fieldMap[key];
       if (field?.isNumeric) {
-        setValueFields(p => [...p, { fieldKey: key, aggType: 'sum', label: makeAggLabel(field.label, 'sum') }]);
+        setValueFields(p => [...p, { id: nextAggId(), fieldKey: key, aggType: 'sum', label: makeAggLabel(field.label, 'sum') }]);
       } else {
         setRowFields(p => [...p, key]);
       }
     }
-  }, [isFieldUsed, fieldMap]);
+  }, [isFieldUsed, fieldMap, nextAggId]);
 
+  // ADD field to a zone WITHOUT removing from other zones (used by drag from field list)
+  const addFieldToZone = useCallback((key: string, zone: ZoneName) => {
+    const field = fieldMap[key];
+    if (!field) return;
+    // Only add if not already in THIS specific zone
+    if (zone === 'rows' && !rowFields.includes(key)) {
+      setRowFields(p => [...p, key]);
+    } else if (zone === 'columns' && !colFields.includes(key)) {
+      setColFields(p => [...p, key]);
+    } else if (zone === 'values') {
+      // Allow same field in values multiple times with different agg
+      setValueFields(p => {
+        const agg = field.isNumeric ? 'sum' as const : 'count' as const;
+        return [...p, { id: nextAggId(), fieldKey: key, aggType: agg, label: makeAggLabel(field.label, agg) }];
+      });
+    } else if (zone === 'filters' && !filterFields.includes(key)) {
+      setFilterFields(p => [...p, key]);
+    }
+  }, [fieldMap, rowFields, colFields, valueFields, filterFields, nextAggId]);
+
+  // MOVE field from current zone to another zone (used by move menu on chip)
   const moveFieldToZone = useCallback((key: string, zone: ZoneName) => {
     const field = fieldMap[key];
     if (!field) return;
@@ -234,16 +269,28 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
     else if (zone === 'columns') setColFields(p => [...p, key]);
     else if (zone === 'values') {
       const agg = field.isNumeric ? 'sum' as const : 'count' as const;
-      setValueFields(p => [...p, { fieldKey: key, aggType: agg, label: makeAggLabel(field.label, agg) }]);
+      setValueFields(p => [...p, { id: nextAggId(), fieldKey: key, aggType: agg, label: makeAggLabel(field.label, agg) }]);
     } else if (zone === 'filters') setFilterFields(p => [...p, key]);
-  }, [fieldMap]);
+  }, [fieldMap, nextAggId]);
 
+  // REMOVE field from a SPECIFIC zone only
+  const removeFieldFromZone = useCallback((key: string, zone: ZoneName) => {
+    if (zone === 'rows') setRowFields(p => p.filter(k => k !== key));
+    else if (zone === 'columns') setColFields(p => p.filter(k => k !== key));
+    else if (zone === 'values') setValueFields(p => p.filter(v => v.fieldKey !== key));
+    else if (zone === 'filters') {
+      setFilterFields(p => p.filter(k => k !== key));
+      setActiveFilters(p => { const n = { ...p }; delete n[key]; return n; });
+    }
+  }, []);
+
+  // Legacy: remove from ALL zones (used by checkbox uncheck)
   const removeField = useCallback((key: string) => { toggleField(key); }, [toggleField]);
 
-  const updateValueAgg = useCallback((fieldKey: string, newAgg: ValueAgg['aggType']) => {
+  const updateValueAgg = useCallback((vaId: string, newAgg: ValueAgg['aggType']) => {
     setValueFields(p => p.map(v => {
-      if (v.fieldKey !== fieldKey) return v;
-      return { ...v, aggType: newAgg, label: makeAggLabel(fieldMap[fieldKey]?.label || fieldKey, newAgg) };
+      if (v.id !== vaId) return v;
+      return { ...v, aggType: newAgg, label: makeAggLabel(fieldMap[v.fieldKey]?.label || v.fieldKey, newAgg) };
     }));
   }, [fieldMap]);
 
@@ -573,14 +620,14 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
               {/* Filters zone */}
               <DropZone icon={Filter} label="Filters" accentColor="#ffb74d"
                 isEmpty={filterFields.length === 0}
-                onDrop={(key) => moveFieldToZone(key, 'filters')}>
+                onDrop={(key) => addFieldToZone(key, 'filters')}>
                 {filterFields.map(fk => {
                   const opts = getFilterOptions(fk);
                   const selected = activeFilters[fk] || [];
                   return (
                     <div key={fk} className="w-full">
                       <ZoneChip label={fieldMap[fk]?.label || fk}
-                        onRemove={() => removeField(fk)}
+                        onRemove={() => removeFieldFromZone(fk, 'filters')}
                         onMove={(z) => moveFieldToZone(fk, z)}
                         showMoveMenu={contextChip === `filter-${fk}`}
                         setShowMoveMenu={(v) => setContextChip(v ? `filter-${fk}` : null)}
@@ -612,10 +659,10 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
               {/* Columns zone */}
               <DropZone icon={LayoutGrid} label="Columns" accentColor="#ba68c8"
                 isEmpty={colFields.length === 0}
-                onDrop={(key) => moveFieldToZone(key, 'columns')}>
+                onDrop={(key) => addFieldToZone(key, 'columns')}>
                 {colFields.map(fk => (
                   <ZoneChip key={fk} label={fieldMap[fk]?.label || fk}
-                    onRemove={() => removeField(fk)}
+                    onRemove={() => removeFieldFromZone(fk, 'columns')}
                     onMove={(z) => moveFieldToZone(fk, z)}
                     showMoveMenu={contextChip === `col-${fk}`}
                     setShowMoveMenu={(v) => setContextChip(v ? `col-${fk}` : null)}
@@ -626,10 +673,10 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
               {/* Rows zone */}
               <DropZone icon={ArrowUpDown} label="Rows" accentColor="#64b5f6"
                 isEmpty={rowFields.length === 0}
-                onDrop={(key) => moveFieldToZone(key, 'rows')}>
+                onDrop={(key) => addFieldToZone(key, 'rows')}>
                 {rowFields.map(fk => (
                   <ZoneChip key={fk} label={fieldMap[fk]?.label || fk}
-                    onRemove={() => removeField(fk)}
+                    onRemove={() => removeFieldFromZone(fk, 'rows')}
                     onMove={(z) => moveFieldToZone(fk, z)}
                     showMoveMenu={contextChip === `row-${fk}`}
                     setShowMoveMenu={(v) => setContextChip(v ? `row-${fk}` : null)}
@@ -640,18 +687,18 @@ export function ExcelPivotTable({ rows, customCols }: { rows: MonitoringRow[]; c
               {/* Values zone */}
               <DropZone icon={Sigma} label="Values" accentColor="#66bb6a"
                 isEmpty={valueFields.length === 0}
-                onDrop={(key) => moveFieldToZone(key, 'values')}>
+                onDrop={(key) => addFieldToZone(key, 'values')}>
                 {valueFields.map((va, vi) => (
-                  <div key={va.fieldKey} className="inline-flex">
+                  <div key={va.id} className="inline-flex">
                     <ZoneChip label={va.label}
-                      onRemove={() => removeField(va.fieldKey)}
+                      onRemove={() => removeFieldFromZone(va.fieldKey, 'values')}
                       onMove={(z) => moveFieldToZone(va.fieldKey, z)}
-                      showMoveMenu={contextChip === `val-${va.fieldKey}`}
-                      setShowMoveMenu={(v) => setContextChip(v ? `val-${va.fieldKey}` : null)}
+                      showMoveMenu={contextChip === `val-${va.id}`}
+                      setShowMoveMenu={(v) => setContextChip(v ? `val-${va.id}` : null)}
                       accentColor="#66bb6a"
                       extra={(
                         <select value={va.aggType}
-                          onChange={(e) => updateValueAgg(va.fieldKey, e.target.value as ValueAgg['aggType'])}
+                          onChange={(e) => updateValueAgg(va.id, e.target.value as ValueAgg['aggType'])}
                           className="bg-transparent text-[9px] text-[#66bb6a] border-none focus:outline-none cursor-pointer"
                           style={{ background: 'transparent' }}
                         >
