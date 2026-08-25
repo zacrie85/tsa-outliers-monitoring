@@ -6,6 +6,7 @@ import {
   PieChart as PieChartIcon, AreaChart, Edit3, Check, Table2,
   ArrowUp, ArrowDown, TrendingUp, Minus, Hash, RefreshCw, FileSpreadsheet, CornerDownRight, Image as ImageIcon,
 } from 'lucide-react';
+import { ExcelPivotTable } from './excel-pivot-table';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart as RechartsArea, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -1091,6 +1092,9 @@ export function PivotCharts() {
           <Plus className="w-4 h-4" /> Tambah Chart
         </button>
       </div>
+
+      {/* Excel-Style Pivot Table */}
+      <ExcelPivotTable rows={rows} customCols={customCols} />
 
       {/* Pivot Table Sections */}
       <div className="flex flex-col gap-4">
