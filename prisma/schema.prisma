@@ -17,6 +17,7 @@ model Project {
   rows        MonitoringRow[]
   columns     CustomColumn[]
   charts      ChartConfig[]
+  forms        FormConfig[]
 }
 
 model User {
@@ -91,6 +92,19 @@ model AuditLog {
   newValue  String?
   timestamp DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
+}
+
+model FormConfig {
+  id              String    @id @default(cuid())
+  projectId       String?
+  project         Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title           String
+  description     String   @default("")
+  fields          String   @default("[]") // JSON: [{key, label, type, required, placeholder}]
+  isActive        Boolean   @default(true)
+  submissionCount Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 model ChartConfig {

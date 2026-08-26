@@ -119,6 +119,39 @@ export async function POST() {
       results.push(`ChartConfig backfill: ${e.message}`);
     }
 
+    // 7. Create FormConfig table if not exists
+    try {
+      await db.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "FormConfig" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "projectId" TEXT,
+          "title" TEXT NOT NULL,
+          "description" TEXT NOT NULL DEFAULT '',
+          "fields" TEXT NOT NULL DEFAULT '[]',
+          "isActive" BOOLEAN NOT NULL DEFAULT true,
+          "submissionCount" INTEGER NOT NULL DEFAULT 0,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      results.push('FormConfig table created/verified');
+    } catch (e: any) {
+      results.push(`FormConfig table: ${e.message}`);
+    }
+
+    // 8. Add projectId to FormConfig if not exists
+    try {
+      await db.$executeRawUnsafe(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'FormConfig' AND column_name = 'projectId') THEN
+            ALTER TABLE "FormConfig" ADD COLUMN "projectId" TEXT;
+          END IF;
+        END $$;
+      `);
+    } catch (e: any) {
+      results.push(`FormConfig.projectId: ${e.message}`);
+    }
+
     return NextResponse.json({ success: true, results });
   } catch (error: any) {
     if (error.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Tidak terautentikasi' }, { status: 401 });

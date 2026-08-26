@@ -8,6 +8,7 @@ import {
   Download, X, Save, FileSpreadsheet, MapPin, ChevronDown, ChevronRight,
   Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown, Upload, FileUp, Loader2, AlertCircle, Eraser, TriangleAlert, Pencil
 } from 'lucide-react';
+import { FormBuilder } from '@/components/forms/form-builder';
 
 const BASE_COLUMNS = [
   { key: 'orderNum', label: 'No', width: 60, editable: false },
@@ -395,6 +396,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const [importError, setImportError] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showFormBuilder, setShowFormBuilder] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearResult, setClearResult] = useState<any>(null);
   const [kmzCoordCol, setKmzCoordCol] = useState('');
@@ -792,6 +794,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               <button onClick={() => setShowClearConfirm(true)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm" style={{background:'linear-gradient(135deg, rgba(239,83,80,0.15), rgba(229,57,53,0.15))', border:'1px solid rgba(239,83,80,0.25)'}}><Eraser className="w-4 h-4" style={{color:'#ef5350'}}/> <span style={{color:'#ef5350'}}>Clear Data</span></button>
               <button onClick={() => setShowColManager(!showColManager)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><Settings className="w-4 h-4" /> Kelola Kolom</button>
               <button onClick={() => setShowAddRow(!showAddRow)} className="flex items-center gap-2 px-4 py-2.5 glass-btn-success rounded-lg text-sm"><Plus className="w-4 h-4" /> Tambah Baris</button>
+              <FormBuilder customCols={customCols.map(c => ({ id: c.id, name: c.name, label: c.label }))} />
             </>
           )}
         </div>

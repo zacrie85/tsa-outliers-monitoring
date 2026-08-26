@@ -1,0 +1,220 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import { Send, CheckCircle2, AlertCircle, Loader2, ClipboardCopy, ExternalLink } from 'lucide-react';
+
+interface FormField {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'textarea';
+  required: boolean;
+  placeholder?: string;
+}
+
+export default function PublicFormPage() {
+  const params = useParams();
+  const formId = params.formId as string;
+
+  const [form, setForm] = useState<{ title: string; description: string; fields: string; project: { name: string; color: string } | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/forms/${formId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) { setError(data.error); return; }
+        setForm(data.form);
+      })
+      .catch(() => setError('Gagal memuat form'))
+      .finally(() => setLoading(false));
+  }, [formId]);
+
+  const fields: FormField[] = form ? JSON.parse(form.fields) : [];
+  const formUrl = typeof window !== 'undefined' ? window.location.href : '';
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/forms/${formId}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: formData }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      setSubmitted(true);
+    } catch {
+      setError('Gagal mengirim. Coba lagi.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(formUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen aero-bg flex items-center justify-center">
+        <div className="glass-card rounded-2xl p-8 text-center">
+          <Loader2 className="w-6 h-6 text-[#64b5f6] animate-spin mx-auto" />
+          <p className="text-sm text-[#78909c] mt-3">Memuat form...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !form) {
+    return (
+      <div className="min-h-screen aero-bg flex items-center justify-center px-4">
+        <div className="glass-card rounded-2xl p-8 text-center max-w-md">
+          <AlertCircle className="w-10 h-10 text-[#ef5350] mx-auto mb-3" />
+          <p className="text-sm text-[#e0e0e0] mb-1">Form Tidak Tersedia</p>
+          <p className="text-xs text-[#78909c]">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen aero-bg flex items-center justify-center px-4">
+        <div className="glass-card rounded-2xl p-10 text-center max-w-md w-full">
+          <div className="w-16 h-16 rounded-full bg-[#81c784]/20 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="w-8 h-8 text-[#81c784]" />
+          </div>
+          <h2 className="text-lg font-bold text-white mb-2">Respons Tercatat!</h2>
+          <p className="text-sm text-[#b0bec5] mb-6">Terima kasih, data kamu sudah berhasil dikirim.</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => { setSubmitted(false); setFormData({}); }}
+              className="px-5 py-2.5 glass-btn rounded-lg text-sm"
+            >
+              Kirim Lagi
+            </button>
+            <button
+              onClick={copyLink}
+              className="flex items-center gap-2 px-5 py-2.5 glass-btn rounded-lg text-sm"
+            >
+              <ClipboardCopy className="w-3.5 h-3.5" />
+              {copied ? 'Tersalin!' : 'Salin Link'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen aero-bg flex flex-col items-center py-8 px-4">
+      {/* Header bar - minimal */}
+      <div className="w-full max-w-2xl flex items-center justify-between mb-8">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full" style={{ background: form?.project?.color || '#64b5f6' }} />\n          <span className="text-[10px] text-[#546e7a]">{form?.project?.name || 'Form'}</span>
+        </div>
+        <button
+          onClick={copyLink}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] text-[#78909c] hover:text-[#90caf9] hover:bg-white/5 transition-all"
+        >
+          <ExternalLink className="w-3 h-3" />
+          {copied ? 'Link Tersalin!' : 'Salin Link'}
+        </button>
+      </div>
+
+      {/* Form Card */}
+      <div className="w-full max-w-2xl">
+        {/* Title Section - Google Forms style color bar */}
+        <div className="rounded-t-2xl p-6 pb-2" style={{ background: `linear-gradient(135deg, ${form?.project?.color || '#64b5f6'}25, ${form?.project?.color || '#64b5f6'}08)` }}>
+          <h1 className="text-xl font-bold text-white mb-1">{form?.title}</h1>
+          {form?.description && <p className="text-xs text-[#b0bec5]">{form.description}</p>}
+          <p className="text-[10px] text-[#546e7a] mt-2">* Wajib diisi</p>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="glass-card rounded-t-none space-y-0">
+            {fields.map((field, idx) => {
+              const isLast = idx === fields.length - 1;
+              return (
+                <div key={field.key} className={isLast ? '' : 'border-b border-white/[0.06]'}>
+                  <div className="px-6 py-4">
+                    <label className="flex items-start gap-1 mb-2">
+                      <span className="text-xs font-medium text-[#e0e0e0]">{field.label}</span>
+                      {field.required && <span className="text-[#ef5350] text-xs">*</span>}
+                    </label>
+
+                    {field.type === 'textarea' ? (
+                      <textarea
+                        required={field.required}
+                        value={formData[field.key] || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        placeholder={field.placeholder || `Masukkan ${field.label.toLowerCase()}...`}
+                        rows={3}
+                        className="w-full px-3 py-2.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-[#e0e0e0] placeholder:text-[#37474f] focus:outline-none focus:border-[#64b5f6]/40 resize-y transition-all"
+                      />
+                    ) : (
+                      <input
+                        type={field.type === 'number' ? 'number' : 'text'}
+                        required={field.required}
+                        value={formData[field.key] || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.value }))}
+                        placeholder={field.placeholder || `Masukkan ${field.label.toLowerCase()}...`}
+                        className="w-full px-3 py-2.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-[#e0e0e0] placeholder:text-[#37474f] focus:outline-none focus:border-[#64b5f6]/40 transition-all"
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Error message */}
+            {error && (
+              <div className="px-6 pb-3">
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-[#ef5350]/10 border border-[#ef5350]/20">
+                  <AlertCircle className="w-4 h-4 text-[#ef5350] flex-shrink-0" />
+                  <p className="text-xs text-[#ef9a9a]">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Submit */}
+            <div className="px-6 py-5 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={copyLink}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs text-[#78909c] hover:text-[#90caf9] hover:bg-white/5 transition-all"
+              >
+                <ClipboardCopy className="w-3.5 h-3.5" />
+                {copied ? 'Tersalin!' : 'Salin Link Form'}
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40"
+                style={{
+                  background: `linear-gradient(135deg, ${form?.project?.color || '#64b5f6'}30, ${form?.project?.color || '#64b5f6'}15)`,
+                  border: `1px solid ${form?.project?.color || '#64b5f6'}50`,
+                  color: form?.project?.color || '#64b5f6',
+                }}
+              >
+                {submitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengirim...</> : <><Send className="w-4 h-4" /> Kirim</>}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <p className="text-[9px] text-[#37474f] mt-6">TSA Outliers Monitoring — Online Form</p>
+    </div>
+  );
+}
