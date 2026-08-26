@@ -53,7 +53,7 @@ const AGG_OPTIONS: { value: ValueAgg['aggType']; label: string }[] = [
   { value: 'max', label: 'Max' },
 ];
 
-const BASE_FIELDS: FieldDef[] = [
+const DEFAULT_BASE_FIELDS: FieldDef[] = [
   { key: 'provinsi', label: 'Provinsi', isNumeric: false },
   { key: 'kabupaten', label: 'Kabupaten', isNumeric: false },
   { key: 'kecamatan', label: 'Kecamatan', isNumeric: false },
@@ -180,7 +180,7 @@ function DropZone({ icon: Icon, label, accentColor, children, onDrop, isEmpty }:
    Main Component
    ═══════════════════════════════════════════════════ */
 
-export function ExcelPivotTable({ rows, customCols, instanceId = 'ep-default' }: { rows: MonitoringRow[]; customCols: any[]; instanceId?: string }) {
+export function ExcelPivotTable({ rows, customCols, instanceId = 'ep-default', fields }: { rows: MonitoringRow[]; customCols: any[]; instanceId?: string; fields?: FieldDef[] }) {
   const [showPanel, setShowPanel] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [rowFields, setRowFields] = useState<string[]>([]);
@@ -237,11 +237,13 @@ export function ExcelPivotTable({ rows, customCols, instanceId = 'ep-default' }:
 
   /* ── Build all fields ── */
   const allFields: FieldDef[] = useMemo(() => {
+    if (fields && fields.length > 0) return fields;
+    // Fallback: merge default base fields with custom columns passed as prop
     const customs: FieldDef[] = (customCols || []).map((c: any) => ({
-      key: c.id, label: c.label, isNumeric: false,
+      key: c.name || c.id, label: c.label, isNumeric: false,
     }));
-    return [...BASE_FIELDS, ...customs];
-  }, [customCols]);
+    return [...DEFAULT_BASE_FIELDS, ...customs];
+  }, [fields, customCols]);
 
   const fieldMap = useMemo(() => {
     const m: Record<string, FieldDef> = {};

@@ -1,7 +1,8 @@
 'use client';
 import { apiFetch } from '@/lib/api';
+import { useProjectFields, useProjectSwitchRefresh } from '@/hooks/use-project-fields';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Download, Settings, X, Save, BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, AreaChart, ScatterChart, Activity } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart as RechartsArea, Area,
@@ -19,7 +20,7 @@ const CHART_TYPES = [
   { value: 'radar', label: 'Radar Chart', icon: Activity },
 ];
 
-const BASE_COL_OPTIONS = [
+const DEFAULT_BASE_COL_OPTIONS = [
   { key: 'provinsi', label: 'Provinsi' },
   { key: 'kabupaten', label: 'Kabupaten' },
   { key: 'kecamatan', label: 'Kecamatan' },
@@ -30,7 +31,7 @@ const BASE_COL_OPTIONS = [
   { key: 'odp', label: 'ODP' },
 ];
 
-const AGGREGATIONS = [
+const DEFAULT_AGGREGATIONS = [
   { value: 'count', label: 'Jumlah (Count)' },
   { value: 'sum_homepass', label: 'Total Homepass' },
   { value: 'sum_odp', label: 'Total ODP' },
@@ -66,11 +67,15 @@ function SingleChart({
   rows,
   customCols,
   onSave,
+  colOptions,
+  aggregations,
 }: {
   chart: ChartConfig;
   rows: MonitoringRow[];
   customCols: any[];
   onSave: (id: string, data: any) => void;
+  colOptions: { key: string; label: string }[];
+  aggregations: { value: string; label: string }[];
 }) {
   const [showSettings, setShowSettings] = useState(false);
   const chartState = JSON.parse(chart.config || '{}');
@@ -82,8 +87,8 @@ function SingleChart({
   const chartRef = useRef<HTMLDivElement>(null);
 
   const allColOptions = [
-    ...BASE_COL_OPTIONS,
-    ...customCols.map(c => ({ key: c.id, label: c.label })),
+    ...colOptions,
+    ...customCols.map(c => ({ key: c.name || c.id, label: c.label })),
   ];
 
   const provOptions = [...new Set(rows.map(r => r.provinsi).filter(Boolean))];
@@ -100,26 +105,53 @@ function SingleChart({
     } catch { return 'Lainnya'; }
   };
 
+  const getNumValue = (row: MonitoringRow, fieldKey: string): number => {
+    if (fieldKey === 'homepass') return row.homepass || 0;
+    if (fieldKey === 'odp') return row.odp || 0;
+    if (fieldKey === 'indexNum') return row.indexNum || 0;
+    try { return parseFloat(JSON.parse(row.customData || '{}')[fieldKey]) || 0; } catch { return 0; }
+  };
+
   const processData = () => {
     if (!groupCol) return [];
 
-    const groups: Record<string, { count: number; homepass: number; odp: number }> = {};
+    // Dynamic: collect all numeric values per group
+    const groups: Record<string, { count: number; values: Record<string, number> }> = {};
     filteredRows.forEach(row => {
       const val = getGroupValue(row, groupCol);
-      if (!groups[val]) groups[val] = { count: 0, homepass: 0, odp: 0 };
+      if (!groups[val]) groups[val] = { count: 0, values: {} };
       groups[val].count++;
-      groups[val].homepass += row.homepass || 0;
-      groups[val].odp += row.odp || 0;
     });
+
+    // If using a dynamic agg, compute numeric values
+    if (aggMethod !== 'count' && (aggMethod.startsWith('sum_') || aggMethod.startsWith('avg_'))) {
+      const fieldKey = aggMethod.replace(/^(sum|avg)_/, '');
+      filteredRows.forEach(row => {
+        const val = getGroupValue(row, groupCol);
+        groups[val].values[fieldKey] = (groups[val].values[fieldKey] || 0) + getNumValue(row, fieldKey);
+      });
+    }
 
     return Object.entries(groups)
       .map(([name, data]) => {
         let value = 0;
-        if (aggMethod === 'count') value = data.count;
-        else if (aggMethod === 'sum_homepass') value = data.homepass;
-        else if (aggMethod === 'sum_odp') value = data.odp;
-        else if (aggMethod === 'avg_homepass') value = data.count > 0 ? Math.round(data.homepass / data.count) : 0;
-        else if (aggMethod === 'avg_odp') value = data.count > 0 ? Math.round(data.odp / data.count) : 0;
+        if (aggMethod === 'count') {
+          value = data.count;
+        } else if (aggMethod.startsWith('sum_')) {
+          const fieldKey = aggMethod.replace('sum_', '');
+          value = data.values[fieldKey] || 0;
+        } else if (aggMethod.startsWith('avg_')) {
+          const fieldKey = aggMethod.replace('avg_', '');
+          const total = data.values[fieldKey] || 0;
+          value = data.count > 0 ? Math.round(total / data.count) : 0;
+        } else {
+          // Legacy fallback
+          if (aggMethod === 'sum_homepass') value = filteredRows.filter(r => getGroupValue(r, groupCol) === name).reduce((s, r) => s + (r.homepass || 0), 0);
+          else if (aggMethod === 'sum_odp') value = filteredRows.filter(r => getGroupValue(r, groupCol) === name).reduce((s, r) => s + (r.odp || 0), 0);
+          else if (aggMethod === 'avg_homepass') { const hp = filteredRows.filter(r => getGroupValue(r, groupCol) === name); value = hp.length > 0 ? Math.round(hp.reduce((s, r) => s + (r.homepass || 0), 0) / hp.length) : 0; }
+          else if (aggMethod === 'avg_odp') { const hp = filteredRows.filter(r => getGroupValue(r, groupCol) === name); value = hp.length > 0 ? Math.round(hp.reduce((s, r) => s + (r.odp || 0), 0) / hp.length) : 0; }
+          else value = data.count;
+        }
         return { name, value };
       })
       .sort((a, b) => b.value - a.value)
@@ -306,7 +338,7 @@ function SingleChart({
             <div>
               <label className="block text-[10px] text-[#546e7a] mb-1">Agregasi</label>
               <select value={aggMethod} onChange={(e) => setAggMethod(e.target.value)} className="w-full px-3 py-2 glass-input rounded-lg text-xs">
-                {AGGREGATIONS.map(ag => (
+                {aggregations.map(ag => (
                   <option key={ag.value} value={ag.value} style={{ background: '#1a1a2e' }}>{ag.label}</option>
                 ))}
               </select>
@@ -338,6 +370,30 @@ export function DashboardCharts() {
   const [charts, setCharts] = useState<ChartConfig[]>([]);
   const [rows, setRows] = useState<MonitoringRow[]>([]);
   const [customCols, setCustomCols] = useState<any[]>([]);
+
+  const refreshKey = useProjectSwitchRefresh();
+  const { fields: projectFields } = useProjectFields();
+
+  // Build dynamic options from project fields
+  const dynamicColOptions = useMemo(() => {
+    if (projectFields.length > 0) {
+      return projectFields.map(f => ({ key: f.key, label: f.label }));
+    }
+    return DEFAULT_BASE_COL_OPTIONS;
+  }, [projectFields]);
+
+  const dynamicAggregations = useMemo(() => {
+    if (projectFields.length > 0) {
+      const numeric = projectFields.filter(f => f.isNumeric);
+      const aggs = [{ value: 'count', label: 'Jumlah (Count)' }];
+      numeric.forEach(f => {
+        aggs.push({ value: `sum_${f.key}`, label: `Total ${f.label}` });
+        aggs.push({ value: `avg_${f.key}`, label: `Rata-rata ${f.label}` });
+      });
+      return aggs;
+    }
+    return DEFAULT_AGGREGATIONS;
+  }, [projectFields]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -382,6 +438,8 @@ export function DashboardCharts() {
           rows={rows}
           customCols={customCols}
           onSave={handleSaveChart}
+          colOptions={dynamicColOptions}
+          aggregations={dynamicAggregations}
         />
       ))}
     </div>
