@@ -52,6 +52,31 @@ function normalizeHeader(h: string): string {
   return h.toString().trim().toLowerCase().replace(/[_\-]/g, ' ').replace(/\s+/g, ' ');
 }
 
+/** Build a unique fingerprint for a row based on key identifying fields.
+ *  Used to detect duplicate rows during append import. */
+function buildRowFingerprint(r: {
+  provinsi?: string; kabupaten?: string; kecamatan?: string; kelurahan?: string;
+  kelRwSiteName?: string; desaPerum?: string; indexNum?: number; homepass?: number; odp?: number;
+  customData?: string;
+}): string {
+  const norm = (v: any) => String(v ?? '').trim().toLowerCase();
+  const parts = [
+    norm(r.provinsi), norm(r.kabupaten), norm(r.kecamatan), norm(r.kelurahan),
+    norm(r.kelRwSiteName), norm(r.desaPerum),
+    String(r.indexNum ?? 0), String(r.homepass ?? 0), String(r.odp ?? 0),
+  ];
+  // Include custom data in fingerprint for complete dedup
+  let customPart = '';
+  if (r.customData) {
+    try {
+      const cd = JSON.parse(r.customData);
+      const sorted = Object.entries(cd).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`);
+      customPart = sorted.join('|');
+    } catch { customPart = r.customData; }
+  }
+  return parts.join('||') + '||' + customPart;
+}
+
 function findHeaderRow(allRows: any[][]): number {
   let bestRow = 0, bestScore = 0;
   for (let r = 0; r < Math.min(allRows.length, 10); r++) {
@@ -209,6 +234,22 @@ export async function POST(request: NextRequest) {
       await db.customColumn.deleteMany({ where: { projectId } });
     }
 
+    // --- DEDUPLICATION: build fingerprint set from existing rows (append mode) ---
+    let existingFingerprints = new Set<string>();
+    if (mode === 'append') {
+      const existingRows = await db.monitoringRow.findMany({
+        where: { projectId },
+        select: {
+          provinsi: true, kabupaten: true, kecamatan: true, kelurahan: true,
+          kelRwSiteName: true, desaPerum: true, indexNum: true, homepass: true, odp: true,
+          customData: true,
+        },
+      });
+      for (const r of existingRows) {
+        existingFingerprints.add(buildRowFingerprint(r));
+      }
+    }
+
     const existingCustomCols = await db.customColumn.findMany({ where: { projectId } });
     const customColMap: Record<string, string> = {};
 
@@ -231,10 +272,15 @@ export async function POST(request: NextRequest) {
       startOrder = (maxOrder?.orderNum || 0) + 1;
     }
 
-    const insertData = rows.map((row, idx) => {
+    // Build insert data and deduplicate in append mode
+    const insertData: any[] = [];
+    let skipped = 0;
+    let orderIdx = 0;
+
+    for (const row of rows) {
       const data: any = {
         projectId,
-        orderNum: startOrder + idx,
+        orderNum: 0, // will be set after dedup check
         categoryBak: '',
         provinsi: '',
         kabupaten: '',
@@ -267,8 +313,25 @@ export async function POST(request: NextRequest) {
       }
       data.customData = JSON.stringify(customData);
 
-      return data;
-    });
+      // Dedup check in append mode
+      if (mode === 'append') {
+        const fp = buildRowFingerprint({
+          provinsi: data.provinsi, kabupaten: data.kabupaten, kecamatan: data.kecamatan,
+          kelurahan: data.kelurahan, kelRwSiteName: data.kelRwSiteName, desaPerum: data.desaPerum,
+          indexNum: data.indexNum, homepass: data.homepass, odp: data.odp,
+          customData: data.customData,
+        });
+        if (existingFingerprints.has(fp)) {
+          skipped++;
+          continue;
+        }
+        existingFingerprints.add(fp);
+      }
+
+      data.orderNum = startOrder + orderIdx;
+      orderIdx++;
+      insertData.push(data);
+    }
 
     const BATCH_SIZE = 50;
     let inserted = 0;
@@ -288,6 +351,7 @@ export async function POST(request: NextRequest) {
           file: file.name,
           mode,
           rows: inserted,
+          skipped,
           baseColumns: Object.keys(baseMap),
           customColumns: Object.keys(customColMap),
         }),
@@ -297,6 +361,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       inserted,
+      skipped,
+      totalInFile: rows.length,
       mode,
       mapping: {
         baseColumns: Object.fromEntries(Object.entries(baseMap).map(([src, field]) => [src, field])),

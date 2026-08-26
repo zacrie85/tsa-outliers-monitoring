@@ -609,7 +609,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                   <input type="radio" name="importMode" value="append" checked={importMode === 'append'} onChange={() => setImportMode('append')} className="accent-[#64b5f6]" />
                   <div>
                     <span className="text-sm text-[#e0e0e0]">Tambahkan ke Data</span>
-                    <p className="text-[10px] text-[#546e7a]">Data baru ditambahkan setelah data yang ada</p>
+                    <p className="text-[10px] text-[#546e7a]">Data baru ditambahkan, duplikat otomatis dilewati</p>
                   </div>
                 </label>
               </div>
@@ -641,7 +641,27 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                 <Check className="w-6 h-6 text-[#81c784]" />
               </div>
               <h4 className="text-sm font-semibold text-[#e0e0e0] mb-1">Import Berhasil!</h4>
-              <p className="text-xs text-[#90caf9] mb-4">{importResult.inserted} baris data diimport (mode: {importResult.mode === 'replace' ? 'Ganti Semua' : 'Tambahkan'})</p>
+              <div className="flex items-center justify-center gap-4 mb-4">
+                <div className="text-center">
+                  <p className="text-lg font-bold text-[#81c784]">{importResult.inserted}</p>
+                  <p className="text-[10px] text-[#78909c]">Data Baru</p>
+                </div>
+                {importResult.mode === 'append' && importResult.skipped > 0 && (
+                  <>
+                    <div className="w-px h-8 bg-white/10" />
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-[#ffb74d]">{importResult.skipped}</p>
+                      <p className="text-[10px] text-[#78909c]">Duplikat Dilewati</p>
+                    </div>
+                  </>
+                )}
+                <div className="w-px h-8 bg-white/10" />
+                <div className="text-center">
+                  <p className="text-lg font-bold text-[#90caf9]">{importResult.totalInFile ?? importResult.inserted}</p>
+                  <p className="text-[10px] text-[#78909c]">Total di File</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-[#546e7a] mb-3">Mode: {importResult.mode === 'replace' ? 'Ganti Semua' : 'Tambahkan (auto-dedup)'}</p>
               <div className="text-left p-3 rounded-lg bg-white/5 mb-4 max-h-48 overflow-y-auto aero-scroll">
                 <p className="text-[10px] text-[#78909c] mb-1 font-medium">Kolom Terdeteksi Otomatis:</p>
                 {Object.entries(importResult.mapping.baseColumns as Record<string, string>).map(([src, field]) => (
