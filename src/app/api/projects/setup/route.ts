@@ -152,6 +152,23 @@ export async function POST() {
       results.push(`FormConfig.projectId: ${e.message}`);
     }
 
+    // 9. Add referenceColumn & referenceLabel to FormConfig
+    try {
+      await db.$executeRawUnsafe(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'FormConfig' AND column_name = 'referenceColumn') THEN
+            ALTER TABLE "FormConfig" ADD COLUMN "referenceColumn" TEXT;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'FormConfig' AND column_name = 'referenceLabel') THEN
+            ALTER TABLE "FormConfig" ADD COLUMN "referenceLabel" TEXT;
+          END IF;
+        END $$;
+      `);
+      results.push('FormConfig reference columns added/verified');
+    } catch (e: any) {
+      results.push(`FormConfig reference: ${e.message}`);
+    }
+
     return NextResponse.json({ success: true, results });
   } catch (error: any) {
     if (error.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Tidak terautentikasi' }, { status: 401 });

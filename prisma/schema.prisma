@@ -101,6 +101,8 @@ model FormConfig {
   title           String
   description     String   @default("")
   fields          String   @default("[]") // JSON: [{key, label, type, required, placeholder}]
+  referenceColumn String?  // column key used to link to existing rows
+  referenceLabel  String?  // display label for the reference
   isActive        Boolean   @default(true)
   submissionCount Int       @default(0)
   createdAt       DateTime  @default(now())

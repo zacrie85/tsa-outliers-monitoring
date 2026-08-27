@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true, title: true, description: true, fields: true,
+        referenceColumn: true, referenceLabel: true,
         isActive: true, submissionCount: true, createdAt: true, updatedAt: true,
       },
     });
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Hanya admin yang bisa buat form' }, { status: 403 });
     }
     const body = await request.json();
-    const { title, description, fields, projectId } = body;
+    const { title, description, fields, projectId, referenceColumn, referenceLabel } = body;
 
     if (!title || !fields || !Array.isArray(fields) || fields.length === 0) {
       return NextResponse.json({ error: 'Title dan fields wajib diisi' }, { status: 400 });
@@ -49,6 +50,8 @@ export async function POST(request: NextRequest) {
         title: title.trim(),
         description: (description || '').trim(),
         fields: JSON.stringify(fields),
+        referenceColumn: referenceColumn || null,
+        referenceLabel: referenceLabel || null,
       },
     });
 
