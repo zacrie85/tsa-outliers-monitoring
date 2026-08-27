@@ -3,6 +3,40 @@ import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { getProjectId } from '@/lib/project-context';
 
+// Ensure FormConfig table exists (idempotent)
+async function ensureFormConfigTable() {
+  try {
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "FormConfig" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "projectId" TEXT,
+        "title" TEXT NOT NULL,
+        "description" TEXT NOT NULL DEFAULT '',
+        "fields" TEXT NOT NULL DEFAULT '[]',
+        "referenceColumn" TEXT,
+        "referenceLabel" TEXT,
+        "isActive" BOOLEAN NOT NULL DEFAULT true,
+        "submissionCount" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    // Ensure referenceColumn & referenceLabel columns exist
+    await db.$executeRawUnsafe(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'FormConfig' AND column_name = 'referenceColumn') THEN
+          ALTER TABLE "FormConfig" ADD COLUMN "referenceColumn" TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'FormConfig' AND column_name = 'referenceLabel') THEN
+          ALTER TABLE "FormConfig" ADD COLUMN "referenceLabel" TEXT;
+        END IF;
+      END $$;
+    `);
+  } catch (e: any) {
+    console.error('ensureFormConfigTable error:', e.message);
+  }
+}
+
 // GET /api/forms — list forms for a project (admin only)
 export async function GET(request: NextRequest) {
   try {
@@ -10,6 +44,7 @@ export async function GET(request: NextRequest) {
     if (user.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Hanya admin' }, { status: 403 });
     }
+    await ensureFormConfigTable();
     const projectId = getProjectId(request.url);
     const forms = await db.formConfig.findMany({
       where: { projectId },
@@ -43,6 +78,9 @@ export async function POST(request: NextRequest) {
     }
 
     const pid = projectId || getProjectId(request.url);
+
+    // Ensure table exists before creating
+    await ensureFormConfigTable();
 
     const form = await db.formConfig.create({
       data: {

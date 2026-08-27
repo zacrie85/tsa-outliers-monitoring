@@ -84,8 +84,36 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: formTitle.trim(), description: formDesc.trim(), fields: editableFields, projectId: activeProjectId, referenceColumn: refColumn || null, referenceLabel: refColLabel || null }),
       });
-      if (res.ok) { resetCreate(); setShowCreate(false); fetchForms(); }
-    } catch {}
+      if (res.ok) {
+        resetCreate(); setShowCreate(false); fetchForms();
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Gagal membuat form' }));
+        // If table doesn't exist, auto-trigger setup
+        if (err.error && (err.error.includes('does not exist') || err.error.includes('relation'))) {
+          try {
+            const setupRes = await fetch('/api/projects/setup', { method: 'POST' });
+            const setupData = await setupRes.json();
+            if (setupRes.ok) {
+              // Retry form creation after setup
+              const retryRes = await fetch('/api/forms', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: formTitle.trim(), description: formDesc.trim(), fields: editableFields, projectId: activeProjectId, referenceColumn: refColumn || null, referenceLabel: refColLabel || null }),
+              });
+              if (retryRes.ok) { resetCreate(); setShowCreate(false); fetchForms(); }
+              else { const e2 = await retryRes.json().catch(() => ({ error: 'Gagal' })); alert('Gagal membuat form: ' + (e2.error || 'Unknown error')); }
+            } else {
+              alert('Setup database gagal: ' + (setupData.error || 'Unknown'));
+            }
+          } catch (e2: any) {
+            alert('Gagal setup: ' + (e2.message || ''));
+          }
+        } else {
+          alert('Gagal membuat form: ' + (err.error || 'Unknown error'));
+        }
+      }
+    } catch (e: any) {
+      alert('Error: ' + (e.message || 'Tidak dapat terhubung ke server'));
+    }
     setCreating(false);
   };
 
