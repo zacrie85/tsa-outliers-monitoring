@@ -82,3 +82,28 @@ Stage Summary:
 - DB schema synced with prisma db push
 - All APIs now respond correctly
 - Page loads successfully (HTTP 200)
+
+---
+Task ID: 2
+Agent: main
+Task: Fix column display order to match original Excel order
+
+Work Log:
+- Analyzed reference images: Excel has ODP Owner|Code|Name|Kelurahan|Kecamatan|City|Region... but app showed No|Kabupaten|Kecamatan|Kelurahan|ODP Owner|Code|Name|Region...
+- Root cause: getAllColumns() put all BASE_COLUMNS first, then all custom columns
+- Added columnOrder JSON field to Project model in schema.prisma
+- Ran prisma db push + generate to sync DB and client
+- Updated import route to build and save columnOrder array (base field keys + custom column names in original Excel order)
+- Updated ProjectInfo interface in app-store.ts to include columnOrder
+- Rewrote getAllColumns() as useCallback with columnOrder support:
+  - When columnOrder exists: iterates saved keys, looks up base/custom, preserves order
+  - Fallback: old behavior (base columns first, then custom)
+- Unified thead and tbody rendering to use getAllColumns() instead of separate visibleBaseColumns + customCols loops
+- Each column determines if it's base or custom via BASE_COLUMNS.some() lookup
+- Build verified: all routes compile, page returns HTTP 200
+
+Stage Summary:
+- Column order now matches original Excel after import
+- Base columns and custom columns are interleaved correctly
+- Manually added columns (after import) append to the end
+- Toggle "Kolom Dasar: Otomatis/Semua" still works with new order
