@@ -20,20 +20,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const updated = await db.monitoringRow.update({
       where: { id },
       data: {
-        categoryBak: body.categoryBak,
-        provinsi: body.provinsi,
-        kabupaten: body.kabupaten,
-        kecamatan: body.kecamatan,
-        kelurahan: body.kelurahan,
-        kelRwSiteName: body.kelRwSiteName,
-        desaPerum: body.desaPerum,
-        indexNum: body.indexNum,
-        homepass: body.homepass,
-        odp: body.odp,
-        remarksTsa: body.remarksTsa,
-        klasifikasiTsa: body.klasifikasiTsa,
-        picTsa: body.picTsa,
-        remarksJlm: body.remarksJlm,
         customData: body.customData,
       },
     });

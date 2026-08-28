@@ -15,20 +15,6 @@ import { FormBuilder } from '@/components/forms/form-builder';
 interface MonitoringRow {
   id: string;
   orderNum: number;
-  categoryBak: string;
-  provinsi: string;
-  kabupaten: string;
-  kecamatan: string;
-  kelurahan: string;
-  kelRwSiteName: string;
-  desaPerum: string;
-  indexNum: number;
-  homepass: number;
-  odp: number;
-  remarksTsa: string;
-  klasifikasiTsa: string;
-  picTsa: string;
-  remarksJlm: string;
   customData: string;
 }
 
@@ -125,7 +111,6 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
 
   const handleCellSave = async (rowId: string, colKey: string, value: string) => {
     const col = customCols.find(c => c.name === colKey);
-    const isCustom = !!col;
     try {
       const res = await fetch('/api/monitoring/cells', {
         method: 'PUT',
@@ -133,7 +118,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
         body: JSON.stringify({
           rowId, colKey, value,
           colLabel: col?.label || colKey,
-          isCustomCol: isCustom,
+          isCustomCol: true,
           isLocked: col?.isLocked || false,
           colDivisionId: col?.divisionId || null,
         }),
@@ -141,18 +126,9 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
       if (!res.ok) { const data = await res.json(); alert(data.error); return; }
       setRows(prev => prev.map(r => {
         if (r.id !== rowId) return r;
-        if (isCustom) {
-          const cd = JSON.parse(r.customData || '{}');
-          cd[colKey] = value;
-          return { ...r, customData: JSON.stringify(cd) };
-        }
-        const update: any = { ...r };
-        if (colKey === 'indexNum' || colKey === 'homepass' || colKey === 'odp') {
-          update[colKey] = parseInt(value) || 0;
-        } else {
-          (update as any)[colKey] = value;
-        }
-        return update;
+        const cd = JSON.parse(r.customData || '{}');
+        cd[colKey] = value;
+        return { ...r, customData: JSON.stringify(cd) };
       }));
     } catch (err) { console.error('Save error:', err); }
     setEditingCell(null);
@@ -315,10 +291,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     if (!search) return rows;
     const s = search.toLowerCase();
     return rows.filter(row =>
-      [row.provinsi, row.kabupaten, row.kecamatan, row.kelurahan,
-        row.kelRwSiteName, row.desaPerum, row.remarksTsa, row.klasifikasiTsa,
-        row.picTsa, row.remarksJlm, row.customData,
-      ].some(v => String(v).toLowerCase().includes(s))
+      (row.customData || '').toLowerCase().includes(s)
     );
   }, [rows, search]);
 
@@ -360,7 +333,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   };
 
   const exportCSV = () => {
-    const allCols = [...visibleBaseColumns, ...customCols.map(c => ({ key: c.name, label: c.label, width: 150, editable: false }))];
+    const allCols = getAllColumns();
     const header = allCols.map(c => `"${c.label}"`).join(',');
     const csvRows = displayRows.map(row => allCols.map(c => `"${getCellValue(row, c.key).replace(/"/g, '""')}"`).join(','));
     const csv = [header, ...csvRows].join('\n');
@@ -701,19 +674,12 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               </div>
               <p className="text-[10px] text-[#546e7a] mb-3">Mode: {importResult.mode === 'replace' ? 'Ganti Semua' : 'Tambahkan (auto-dedup)'}</p>
               <div className="text-left p-3 rounded-lg bg-white/5 mb-4 max-h-48 overflow-y-auto aero-scroll">
-                <p className="text-[10px] text-[#78909c] mb-1 font-medium">Kolom Terdeteksi Otomatis:</p>
-                {Object.entries(importResult.mapping.baseColumns as Record<string, string>).map(([src, field]) => (
+                <p className="text-[10px] text-[#78909c] mb-1 font-medium">Kolom Terdeteksi:</p>
+                {Object.entries(importResult.mapping as Record<string, string>).map(([src, colName]) => (
                   <div key={src} className="flex items-center gap-2 text-xs py-0.5">
                     <span className="text-[#b0bec5]">{src}</span>
                     <span className="text-[#546e7a]">&rarr;</span>
-                    <span className="text-[#90caf9]">{field}</span>
-                  </div>
-                ))}
-                {Object.entries(importResult.mapping.customColumns as Record<string, string>).map(([src, colId]) => (
-                  <div key={src} className="flex items-center gap-2 text-xs py-0.5">
-                    <span className="text-[#b0bec5]">{src}</span>
-                    <span className="text-[#546e7a]">&rarr;</span>
-                    <span className="text-[#ffb74d]">Kolom Baru</span>
+                    <span className="text-[#90caf9]">{colName}</span>
                   </div>
                 ))}
               </div>
@@ -989,7 +955,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                 <tr key={row.id}>
                   {getAllColumns().map(col => {
                     const colKey = col.key;
-                    const customCol = customCols.find(c => c.name === colKey);
+                    const customCol = customCols.find(c => c.name === colKey) || null;
                     const val = getCellValue(row, colKey);
                     const canEdit = canEditCell(colKey, customCol);
                     const isEditing = editingCell?.rowId === row.id && editingCell?.colKey === colKey;

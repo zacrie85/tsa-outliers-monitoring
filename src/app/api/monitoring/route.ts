@@ -38,21 +38,7 @@ export async function POST(request: NextRequest) {
       data: {
         projectId,
         orderNum: nextOrder,
-        categoryBak: body.categoryBak || '',
-        provinsi: body.provinsi || '',
-        kabupaten: body.kabupaten || '',
-        kecamatan: body.kecamatan || '',
-        kelurahan: body.kelurahan || '',
-        kelRwSiteName: body.kelRwSiteName || '',
-        desaPerum: body.desaPerum || '',
-        indexNum: body.indexNum || 0,
-        homepass: body.homepass || 0,
-        odp: body.odp || 0,
-        remarksTsa: body.remarksTsa || '',
-        klasifikasiTsa: body.klasifikasiTsa || '',
-        picTsa: body.picTsa || '',
-        remarksJlm: body.remarksJlm || '',
-        customData: body.customData || '{}',
+        customData: JSON.stringify(body),
       },
     });
 

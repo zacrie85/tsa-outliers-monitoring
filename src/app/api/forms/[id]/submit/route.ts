@@ -42,9 +42,11 @@ export async function POST(
       }
     }
 
-    const BASE_FIELDS = ['categoryBak', 'provinsi', 'kabupaten', 'kecamatan', 'kelurahan', 'kelRwSiteName', 'desaPerum'];
-    const NUM_FIELDS = ['indexNum', 'homepass', 'odp'];
-    const REMARKS_FIELDS = ['remarksTsa', 'klasifikasiTsa', 'picTsa', 'remarksJlm'];
+    // ALL field values go into customData — no more base column separation
+    const customData: Record<string, string> = {};
+    for (const field of fields) {
+      customData[field.key] = String(data[field.key] || '').trim();
+    }
 
     if (form.referenceColumn && referenceRowId) {
       // === UPDATE EXISTING ROW ===
@@ -55,30 +57,13 @@ export async function POST(
         return NextResponse.json({ error: 'Baris data tidak ditemukan' }, { status: 404 });
       }
 
-      const updateData: any = { updatedAt: new Date() };
-      const customUpdates: Record<string, string> = {};
       const existingCustom = JSON.parse(existingRow.customData || '{}');
-
-      for (const field of fields) {
-        const val = String(data[field.key] || '').trim();
-        if (BASE_FIELDS.includes(field.key)) {
-          updateData[field.key] = val;
-        } else if (NUM_FIELDS.includes(field.key)) {
-          updateData[field.key] = parseInt(val) || 0;
-        } else if (REMARKS_FIELDS.includes(field.key)) {
-          updateData[field.key] = val;
-        } else {
-          customUpdates[field.key] = val;
-        }
-      }
-
-      if (Object.keys(customUpdates).length > 0) {
-        updateData.customData = JSON.stringify({ ...existingCustom, ...customUpdates });
-      }
-
       await db.monitoringRow.update({
         where: { id: referenceRowId },
-        data: updateData,
+        data: {
+          customData: JSON.stringify({ ...existingCustom, ...customData }),
+          updatedAt: new Date(),
+        },
       });
     } else {
       // === CREATE NEW ROW ===
@@ -89,28 +74,13 @@ export async function POST(
       });
       const startOrder = (maxOrder?.orderNum || 0) + 1;
 
-      const rowData: any = { projectId: form.projectId, orderNum: startOrder };
-      for (const f of BASE_FIELDS) rowData[f] = '';
-      for (const f of NUM_FIELDS) rowData[f] = 0;
-      for (const f of REMARKS_FIELDS) rowData[f] = '';
-
-      const customData: Record<string, string> = {};
-
-      for (const field of fields) {
-        const val = String(data[field.key] || '').trim();
-        if (BASE_FIELDS.includes(field.key)) {
-          rowData[field.key] = val;
-        } else if (NUM_FIELDS.includes(field.key)) {
-          rowData[field.key] = parseInt(val) || 0;
-        } else if (REMARKS_FIELDS.includes(field.key)) {
-          rowData[field.key] = val;
-        } else {
-          customData[field.key] = val;
-        }
-      }
-
-      rowData.customData = JSON.stringify(customData);
-      await db.monitoringRow.create({ data: rowData });
+      await db.monitoringRow.create({
+        data: {
+          projectId: form.projectId,
+          orderNum: startOrder,
+          customData: JSON.stringify(customData),
+        },
+      });
     }
 
     // Increment submission count

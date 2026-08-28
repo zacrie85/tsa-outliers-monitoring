@@ -13,12 +13,8 @@ import {
 
 interface MonitoringRow {
   id: string;
-  orderNum: number; indexNum: number;
-  provinsi: string; kabupaten: string; kecamatan: string; kelurahan: string;
-  kelRwSiteName: string; desaPerum: string;
-  categoryBak: string; klasifikasiTsa: string; picTsa: string;
-  remarksTsa: string; remarksJlm: string;
-  homepass: number; odp: number; customData: string;
+  orderNum: number;
+  customData: string;
 }
 
 interface FieldDef {
@@ -53,29 +49,13 @@ const AGG_OPTIONS: { value: ValueAgg['aggType']; label: string }[] = [
   { value: 'max', label: 'Max' },
 ];
 
-const DEFAULT_BASE_FIELDS: FieldDef[] = [
-  { key: 'provinsi', label: 'Provinsi', isNumeric: false },
-  { key: 'kabupaten', label: 'Kabupaten', isNumeric: false },
-  { key: 'kecamatan', label: 'Kecamatan', isNumeric: false },
-  { key: 'kelurahan', label: 'Kelurahan', isNumeric: false },
-  { key: 'kelRwSiteName', label: 'Kel RW/Site Name', isNumeric: false },
-  { key: 'desaPerum', label: 'Desa/Perum', isNumeric: false },
-  { key: 'categoryBak', label: 'Category BAK', isNumeric: false },
-  { key: 'klasifikasiTsa', label: 'Klasifikasi TSA', isNumeric: false },
-  { key: 'picTsa', label: 'PIC TSA', isNumeric: false },
-  { key: 'remarksTsa', label: 'Remarks TSA', isNumeric: false },
-  { key: 'remarksJlm', label: 'Remarks JLM', isNumeric: false },
-  { key: 'indexNum', label: 'No', isNumeric: true },
-  { key: 'homepass', label: 'Homepass', isNumeric: true },
-  { key: 'odp', label: 'ODP', isNumeric: true },
-];
+// No more hardcoded base fields — all fields come from custom columns.
 
 /* ═══════════════════════════════════════════════════
    Helpers
    ═══════════════════════════════════════════════════ */
 
 function getFieldValue(row: MonitoringRow, key: string): string {
-  if (key in row) return String((row as any)[key] ?? 'Lainnya');
   try { return String(JSON.parse(row.customData || '{}')[key] ?? 'Lainnya'); } catch { return 'Lainnya'; }
 }
 
@@ -88,9 +68,6 @@ function computeValueAgg(items: MonitoringRow[], va: ValueAgg): number {
     }).length;
   }
   const nums = items.map(r => {
-    if (va.fieldKey === 'homepass') return r.homepass || 0;
-    if (va.fieldKey === 'odp') return r.odp || 0;
-    if (va.fieldKey === 'indexNum') return r.indexNum || 0;
     if (va.fieldKey === 'orderNum') return r.orderNum || 0;
     return parseFloat(getFieldValue(r, va.fieldKey)) || 0;
   });
@@ -242,7 +219,7 @@ export function ExcelPivotTable({ rows, customCols, instanceId = 'ep-default', f
     const customs: FieldDef[] = (customCols || []).map((c: any) => ({
       key: c.name || c.id, label: c.label, isNumeric: false,
     }));
-    return [...DEFAULT_BASE_FIELDS, ...customs];
+    return customs;
   }, [fields, customCols]);
 
   const fieldMap = useMemo(() => {

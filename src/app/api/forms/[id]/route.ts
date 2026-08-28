@@ -32,41 +32,23 @@ export async function GET(
     let references: Array<{ value: string; rowId: string }> = [];
     if (withReferences && form.referenceColumn) {
       const colKey = form.referenceColumn;
-      // Determine if it's a base field or custom column
-      const baseFields = ['categoryBak','provinsi','kabupaten','kecamatan','kelurahan','kelRwSiteName','desaPerum','indexNum','homepass','odp','remarksTsa','klasifikasiTsa','picTsa','remarksJlm'];
-
-      if (baseFields.includes(colKey)) {
-        // Base field - query directly
-        const rows = await db.monitoringRow.findMany({
-          where: { projectId: form.projectId },
-          select: { id: true, [colKey]: true },
-          orderBy: { orderNum: 'asc' },
-        });
-        references = rows
-          .filter(r => {
-            const v = String((r as any)[colKey] ?? '').trim();
-            return v !== '' && v !== '0';
-          })
-          .map(r => ({ value: String((r as any)[colKey]), rowId: r.id }));
-      } else {
-        // Custom column - parse customData JSON
-        const rows = await db.monitoringRow.findMany({
-          where: { projectId: form.projectId },
-          select: { id: true, customData: true },
-          orderBy: { orderNum: 'asc' },
-        });
-        references = [];
-        const seen = new Set<string>();
-        for (const r of rows) {
-          try {
-            const cd = JSON.parse(r.customData || '{}');
-            const v = String(cd[colKey] ?? '').trim();
-            if (v && !seen.has(v)) {
-              seen.add(v);
-              references.push({ value: v, rowId: r.id });
-            }
-          } catch {}
-        }
+      // ALL fields are now stored in customData
+      const rows = await db.monitoringRow.findMany({
+        where: { projectId: form.projectId },
+        select: { id: true, customData: true },
+        orderBy: { orderNum: 'asc' },
+      });
+      references = [];
+      const seen = new Set<string>();
+      for (const r of rows) {
+        try {
+          const cd = JSON.parse(r.customData || '{}');
+          const v = String(cd[colKey] ?? '').trim();
+          if (v && !seen.has(v)) {
+            seen.add(v);
+            references.push({ value: v, rowId: r.id });
+          }
+        } catch {}
       }
     }
 

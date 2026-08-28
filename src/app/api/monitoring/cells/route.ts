@@ -5,24 +5,21 @@ import { requireAuth } from '@/lib/auth';
 export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth();
-    const { rowId, colKey, value, colLabel, isCustomCol, isLocked, colDivisionId } = await request.json();
+    const { rowId, colKey, value, colLabel, isLocked, colDivisionId } = await request.json();
 
     // Check if column is locked
     if (isLocked) {
       return NextResponse.json({ error: 'Kolom ini dikunci oleh admin' }, { status: 403 });
     }
 
-    // Check permissions for custom columns
-    if (isCustomCol && user.role !== 'ADMIN') {
+    // Check division permissions for non-admin users
+    if (user.role !== 'ADMIN') {
       if (colDivisionId && colDivisionId !== user.divisionId) {
         return NextResponse.json({ error: 'Anda tidak memiliki akses ke kolom ini' }, { status: 403 });
       }
-    }
-
-    // For non-admin, check if it's a base column they can edit
-    const editableBaseCols = ['remarksTsa', 'klasifikasiTsa', 'picTsa'];
-    if (!isCustomCol && user.role !== 'ADMIN' && !editableBaseCols.includes(colKey)) {
-      return NextResponse.json({ error: 'Anda tidak bisa mengedit kolom ini' }, { status: 403 });
+      if (!colDivisionId) {
+        return NextResponse.json({ error: 'Anda tidak bisa mengedit kolom ini' }, { status: 403 });
+      }
     }
 
     const row = await db.monitoringRow.findUnique({ where: { id: rowId } });
@@ -30,29 +27,14 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Baris tidak ditemukan' }, { status: 404 });
     }
 
-    let oldValue: string | null = null;
+    const customData = JSON.parse(row.customData || '{}');
+    const oldValue = customData[colKey] || null;
+    customData[colKey] = value;
 
-    if (isCustomCol) {
-      const customData = JSON.parse(row.customData || '{}');
-      oldValue = customData[colKey] || null;
-      customData[colKey] = value;
-      await db.monitoringRow.update({
-        where: { id: rowId },
-        data: { customData: JSON.stringify(customData) },
-      });
-    } else {
-      oldValue = String(row[colKey as keyof typeof row] ?? '');
-      const updateData: Record<string, any> = {};
-      if (colKey === 'indexNum' || colKey === 'homepass' || colKey === 'odp') {
-        updateData[colKey] = parseInt(value) || 0;
-      } else {
-        updateData[colKey] = value;
-      }
-      await db.monitoringRow.update({
-        where: { id: rowId },
-        data: updateData,
-      });
-    }
+    await db.monitoringRow.update({
+      where: { id: rowId },
+      data: { customData: JSON.stringify(customData) },
+    });
 
     await db.auditLog.create({
       data: {
