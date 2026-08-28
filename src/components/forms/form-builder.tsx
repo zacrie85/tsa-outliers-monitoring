@@ -7,23 +7,6 @@ import {
   Loader2, ClipboardList, ChevronDown, ChevronUp, GripVertical, Link as LinkIcon,
 } from 'lucide-react';
 
-const BASE_COLUMNS = [
-  { key: 'categoryBak', label: 'Category BAK', type: 'text' as const },
-  { key: 'provinsi', label: 'Provinsi', type: 'text' as const },
-  { key: 'kabupaten', label: 'Kabupaten', type: 'text' as const },
-  { key: 'kecamatan', label: 'Kecamatan', type: 'text' as const },
-  { key: 'kelurahan', label: 'Kelurahan', type: 'text' as const },
-  { key: 'kelRwSiteName', label: 'Kel RW/Site Name', type: 'text' as const },
-  { key: 'desaPerum', label: 'Desa/Perum', type: 'text' as const },
-  { key: 'indexNum', label: 'Index', type: 'number' as const },
-  { key: 'homepass', label: 'Homepass', type: 'number' as const },
-  { key: 'odp', label: 'ODP', type: 'number' as const },
-  { key: 'remarksTsa', label: 'Remarks TSA', type: 'textarea' as const },
-  { key: 'klasifikasiTsa', label: 'Klasifikasi TSA', type: 'text' as const },
-  { key: 'picTsa', label: 'PIC TSA', type: 'text' as const },
-  { key: 'remarksJlm', label: 'Remarks JLM', type: 'textarea' as const },
-];
-
 interface FormField { key: string; label: string; type: 'text' | 'number' | 'textarea'; required: boolean; placeholder?: string; }
 interface FormItem { id: string; title: string; description: string; fields: string; referenceColumn: string | null; referenceLabel: string | null; isActive: boolean; submissionCount: number; createdAt: string; }
 interface FormBuilderProps { customCols: Array<{ id: string; name: string; label: string }>; }
@@ -41,7 +24,7 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const allColumns = [...BASE_COLUMNS, ...customCols.map(c => ({ key: c.id, label: c.label, type: 'text' as const }))];
+  const allColumns = customCols.map(c => ({ key: c.name, label: c.label, type: 'text' as const }));
   const refColumns = allColumns.filter(c => c.type !== 'number');
   const refColLabel = refColumns.find(c => c.key === refColumn)?.label || '';
   const editableFields = selectedFields.filter(f => f.key !== refColumn);

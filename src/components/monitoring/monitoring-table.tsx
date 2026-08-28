@@ -6,27 +6,11 @@ import { useAppStore } from '@/store/app-store';
 import {
   Plus, Trash2, Search, Lock, Unlock, Settings,
   Download, X, Save, FileSpreadsheet, MapPin, ChevronDown, ChevronRight,
-  Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown, Upload, FileUp, Loader2, AlertCircle, Eraser, TriangleAlert, Pencil, Eye, EyeOff
+  Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown, Upload, FileUp, Loader2, AlertCircle, Eraser, TriangleAlert, Pencil
 } from 'lucide-react';
 import { FormBuilder } from '@/components/forms/form-builder';
 
-const BASE_COLUMNS = [
-  { key: 'orderNum', label: 'No', width: 60, editable: false },
-  { key: 'categoryBak', label: 'Category BAK', width: 120, editable: false },
-  { key: 'provinsi', label: 'Provinsi', width: 120, editable: false },
-  { key: 'kabupaten', label: 'Kabupaten', width: 120, editable: false },
-  { key: 'kecamatan', label: 'Kecamatan', width: 130, editable: false },
-  { key: 'kelurahan', label: 'Kelurahan', width: 130, editable: false },
-  { key: 'kelRwSiteName', label: 'Kel RW/Site Name', width: 180, editable: false },
-  { key: 'desaPerum', label: 'Desa/Perum', width: 180, editable: false },
-  { key: 'indexNum', label: 'Index', width: 80, editable: false },
-  { key: 'homepass', label: 'Homepass', width: 100, editable: false },
-  { key: 'odp', label: 'ODP', width: 80, editable: false },
-  { key: 'remarksTsa', label: 'Remarks TSA', width: 200, editable: true },
-  { key: 'klasifikasiTsa', label: 'Klasifikasi TSA', width: 150, editable: true },
-  { key: 'picTsa', label: 'PIC TSA', width: 120, editable: true },
-  { key: 'remarksJlm', label: 'Remarks JLM', width: 200, editable: false },
-];
+// No more hardcoded base columns — all columns come from Excel imports as custom columns.
 
 interface MonitoringRow {
   id: string;
@@ -133,9 +117,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const canEditCell = (colKey: string, col: CustomColumn | null) => {
     if (viewer) return false;
     if (user?.role === 'ADMIN') return true;
-    if (!col) {
-      return BASE_COLUMNS.find(c => c.key === colKey)?.editable || false;
-    }
+    if (!col) return false;
     if (col.isLocked) return false;
     if (!col.divisionId) return false;
     return col.divisionId === user?.divisionId;
@@ -150,7 +132,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           rowId, colKey, value,
-          colLabel: col?.label || BASE_COLUMNS.find(c => c.key === colKey)?.label,
+          colLabel: col?.label || colKey,
           isCustomCol: isCustom,
           isLocked: col?.isLocked || false,
           colDivisionId: col?.divisionId || null,
@@ -401,24 +383,8 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const [clearing, setClearing] = useState(false);
   const [clearResult, setClearResult] = useState<any>(null);
   const [kmzCoordCol, setKmzCoordCol] = useState('');
-  const [kmzNameCols, setKmzNameCols] = useState<string[]>(['kelRwSiteName', 'desaPerum']);
+  const [kmzNameCols, setKmzNameCols] = useState<string[]>([]);
   const [kmzDescCols, setKmzDescCols] = useState<string[]>([]);
-  const [showAllBaseColumns, setShowAllBaseColumns] = useState(false);
-
-  // Auto-detect which base columns have data and only show those
-  const visibleBaseColumns = useMemo(() => {
-    if (showAllBaseColumns) return BASE_COLUMNS;
-    if (rows.length === 0) return [];
-    return BASE_COLUMNS.filter(col => {
-      return rows.some(row => {
-        const val = (row as any)[col.key];
-        if (col.key === 'orderNum' || col.key === 'indexNum' || col.key === 'homepass' || col.key === 'odp') {
-          return val !== undefined && val !== null && val !== 0;
-        }
-        return val !== undefined && val !== null && String(val).trim() !== '';
-      });
-    });
-  }, [rows, showAllBaseColumns]);
 
   // Parse columnOrder from project (saved during import to preserve original Excel order)
   const columnOrderKeys: string[] = useMemo(() => {
@@ -431,10 +397,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   }, [activeProject?.columnOrder]);
 
   const getAllColumns = useCallback(() => {
-    // Build lookup maps for quick access
-    const baseColMap = new Map(BASE_COLUMNS.map(c => [c.key, c]));
     const customColMap = new Map(customCols.map(c => [c.name, c]));
-    const visibleBaseSet = new Set(visibleBaseColumns.map(c => c.key));
 
     // If we have a saved column order from import, use it
     if (columnOrderKeys.length > 0) {
@@ -443,24 +406,12 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
       for (const key of columnOrderKeys) {
         if (seen.has(key)) continue;
         seen.add(key);
-        if (baseColMap.has(key)) {
-          // Only include base columns that have data (or show all if toggled)
-          if (showAllBaseColumns || visibleBaseSet.has(key)) {
-            const bc = baseColMap.get(key)!;
-            ordered.push({ key: bc.key, label: bc.label, width: bc.width, editable: bc.editable });
-          }
-        } else if (customColMap.has(key)) {
+        if (customColMap.has(key)) {
           const cc = customColMap.get(key)!;
           ordered.push({ key: cc.name, label: cc.label, width: 150, editable: false });
         }
       }
       // Append any columns not in the saved order (e.g. manually added later)
-      for (const c of visibleBaseColumns) {
-        if (!seen.has(c.key)) {
-          ordered.push({ key: c.key, label: c.label, width: c.width, editable: c.editable });
-          seen.add(c.key);
-        }
-      }
       for (const c of customCols) {
         if (!seen.has(c.name)) {
           ordered.push({ key: c.name, label: c.label, width: 150, editable: false });
@@ -470,12 +421,9 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
       return ordered;
     }
 
-    // Fallback: no saved order — show base columns first, then custom
-    return [
-      ...visibleBaseColumns.map(c => ({ key: c.key, label: c.label, width: c.width, editable: c.editable })),
-      ...customCols.map(c => ({ key: c.name, label: c.label, width: 150, editable: false })),
-    ];
-  }, [visibleBaseColumns, customCols, columnOrderKeys, showAllBaseColumns]);
+    // Fallback: no saved order — show custom columns in DB order
+    return customCols.map(c => ({ key: c.name, label: c.label, width: 150, editable: false }));
+  }, [customCols, columnOrderKeys]);
 
   const parseCoord = (val: string): { lat: number; lng: number } | null => {
     const cleaned = val.replace(/[()\s]/g, '');
@@ -881,10 +829,6 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               <button onClick={() => setShowImportDialog(true)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm" style={{background:'linear-gradient(135deg, rgba(255,183,77,0.2), rgba(255,138,101,0.2))', border:'1px solid rgba(255,183,77,0.3)'}}><Upload className="w-4 h-4" style={{color:'#ffb74d'}}/> <span style={{color:'#ffb74d'}}>Import Data</span></button>
               <button onClick={() => setShowClearConfirm(true)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm" style={{background:'linear-gradient(135deg, rgba(239,83,80,0.15), rgba(229,57,53,0.15))', border:'1px solid rgba(239,83,80,0.25)'}}><Eraser className="w-4 h-4" style={{color:'#ef5350'}}/> <span style={{color:'#ef5350'}}>Clear Data</span></button>
               <button onClick={() => setShowColManager(!showColManager)} className="flex items-center gap-2 px-4 py-2.5 glass-btn rounded-lg text-sm"><Settings className="w-4 h-4" /> Kelola Kolom</button>
-              <button onClick={() => setShowAllBaseColumns(v => !v)} className={"flex items-center gap-2 px-3 py-2.5 glass-btn rounded-lg text-xs " + (showAllBaseColumns ? "!bg-white/15 !border-white/30" : "")} title={showAllBaseColumns ? 'Sembunyikan kolom dasar kosong' : 'Tampilkan semua kolom dasar'}>
-                {showAllBaseColumns ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                {showAllBaseColumns ? 'Kolom Dasar: Semua' : 'Kolom Dasar: Otomatis'}
-              </button>
               <button onClick={() => setShowAddRow(!showAddRow)} className="flex items-center gap-2 px-4 py-2.5 glass-btn-success rounded-lg text-sm"><Plus className="w-4 h-4" /> Tambah Baris</button>
               <FormBuilder customCols={customCols.map(c => ({ id: c.id, name: c.name, label: c.label }))} />
             </>
@@ -978,10 +922,10 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {BASE_COLUMNS.filter(c => c.key !== 'orderNum').map(col => (
-              <div key={col.key}>
+            {customCols.map(col => (
+              <div key={col.name}>
                 <label className="block text-[10px] text-[#546e7a] mb-1">{col.label}</label>
-                <input value={(newRow as any)[col.key] || ''} onChange={(e) => setNewRow(prev => ({ ...prev, [col.key]: e.target.value }))} className="w-full px-2.5 py-1.5 glass-input rounded-md text-xs" placeholder={col.label} />
+                <input value={(newRow as any)[col.name] || ''} onChange={(e) => setNewRow(prev => ({ ...prev, [col.name]: e.target.value }))} className="w-full px-2.5 py-1.5 glass-input rounded-md text-xs" placeholder={col.label} />
               </div>
             ))}
           </div>
@@ -1013,24 +957,22 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
             <thead>
               <tr>
                 {getAllColumns().map(col => {
-                  const isBase = BASE_COLUMNS.some(bc => bc.key === col.key);
-                  const customCol = isBase ? null : customCols.find(c => c.name === col.key);
                   const colKey = col.key;
+                  const customCol = customCols.find(c => c.name === colKey);
                   const hasFilter = columnFilters[colKey] !== undefined;
                   const sortDir = sortConfig?.key === colKey ? sortConfig.direction : null;
                   return (
                     <th key={colKey} style={{ minWidth: col.width || 150 }} className="relative group">
                       <div className="flex items-center gap-1">
                         <button onClick={() => openFilter(colKey)} className="flex items-center gap-1 hover:text-white transition-colors">
-                          {!isBase && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: getDivisionColor(customCol?.divisionId || null) }} />}
+                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: getDivisionColor(customCol?.divisionId || null) }} />
                           {sortDir === 'asc' && <ArrowUp className="w-3 h-3 text-[#64b5f6]" />}
                           {sortDir === 'desc' && <ArrowDown className="w-3 h-3 text-[#64b5f6]" />}
                           {!sortDir && hasFilter && <Filter className="w-3 h-3 text-[#ffb74d]" />}
                           {!sortDir && !hasFilter && <ChevronsUpDown className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />}
                           {col.label}
                         </button>
-                        {isBase && col.editable && user?.role !== 'ADMIN' && (<span className="w-1.5 h-1.5 rounded-full bg-[#81c784]" title="Bisa diedit" />)}
-                        {!isBase && customCol?.isLocked && <Lock className="w-3 h-3 text-[#ef9a9a]" />}
+                        {customCol?.isLocked && <Lock className="w-3 h-3 text-[#ef9a9a]" />}
                         <button onClick={() => openFilter(colKey)} className={'p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all ' + (hasFilter ? '!opacity-100' : '')}>
                           <ChevronDown className="w-3 h-3 text-[#78909c]" />
                         </button>
@@ -1046,9 +988,8 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               {displayRows.map((row) => (
                 <tr key={row.id}>
                   {getAllColumns().map(col => {
-                    const isBase = BASE_COLUMNS.some(bc => bc.key === col.key);
-                    const customCol = isBase ? null : customCols.find(c => c.name === col.key);
                     const colKey = col.key;
+                    const customCol = customCols.find(c => c.name === colKey);
                     const val = getCellValue(row, colKey);
                     const canEdit = canEditCell(colKey, customCol);
                     const isEditing = editingCell?.rowId === row.id && editingCell?.colKey === colKey;
@@ -1061,9 +1002,9 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                             className="w-full px-2 py-1 glass-input rounded text-xs resize-y" rows={2}
                             style={{ minWidth: (col.width || 150) - 24, minHeight: 40 }} />
                         ) : (
-                          <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '') + (!isBase && customCol?.isLocked ? ' locked-cell' : '')}
+                          <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '') + (customCol?.isLocked ? ' locked-cell' : '')}
                             onClick={() => { if (!canEdit) return; setEditingCell({ rowId: row.id, colKey }); setEditValue(val); }}
-                            title={!isBase && customCol?.isLocked ? 'Kolom terkunci' : val}>
+                            title={customCol?.isLocked ? 'Kolom terkunci' : val}>
                             {val ? val.split('\n').map((line, i) => <span key={i}>{line}{i < val.split('\n').length - 1 && <br />}</span>) : <span className="text-[#37474f]">-</span>}
                           </div>
                         )}

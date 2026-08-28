@@ -3,88 +3,19 @@ import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { getProjectId } from '@/lib/project-context';
 
-const BASE_FIELD_MAP: Record<string, { key: string; type: 'string' | 'number' }> = {
-  'no': { key: 'orderNum', type: 'number' },
-  'no.': { key: 'orderNum', type: 'number' },
-  'order': { key: 'orderNum', type: 'number' },
-  'ordernum': { key: 'orderNum', type: 'number' },
-  'no urut': { key: 'orderNum', type: 'number' },
-  'nomor': { key: 'orderNum', type: 'number' },
-  'category bak': { key: 'categoryBak', type: 'string' },
-  'category_bak': { key: 'categoryBak', type: 'string' },
-  'categorybak': { key: 'categoryBak', type: 'string' },
-  'provinsi': { key: 'provinsi', type: 'string' },
-  'province': { key: 'provinsi', type: 'string' },
-  'kabupaten': { key: 'kabupaten', type: 'string' },
-  'kabupaten kota': { key: 'kabupaten', type: 'string' },
-  'kabupaten/kota': { key: 'kabupaten', type: 'string' },
-  'city': { key: 'kabupaten', type: 'string' },
-  'kota': { key: 'kabupaten', type: 'string' },
-  'kecamatan': { key: 'kecamatan', type: 'string' },
-  'district': { key: 'kecamatan', type: 'string' },
-  'kelurahan': { key: 'kelurahan', type: 'string' },
-  'kel': { key: 'kelurahan', type: 'string' },
-  'kelurahan desa': { key: 'kelurahan', type: 'string' },
-  'kelurahan/desa': { key: 'kelurahan', type: 'string' },
-  'village': { key: 'kelurahan', type: 'string' },
-  'kel rw/site name': { key: 'kelRwSiteName', type: 'string' },
-  'kel rw site name': { key: 'kelRwSiteName', type: 'string' },
-  'kel_rw_site_name': { key: 'kelRwSiteName', type: 'string' },
-  'kelrw/sitename': { key: 'kelRwSiteName', type: 'string' },
-  'site name': { key: 'kelRwSiteName', type: 'string' },
-  'sitename': { key: 'kelRwSiteName', type: 'string' },
-  'desa/perum': { key: 'desaPerum', type: 'string' },
-  'desa perum': { key: 'desaPerum', type: 'string' },
-  'desa_perum': { key: 'desaPerum', type: 'string' },
-  'desa': { key: 'desaPerum', type: 'string' },
-  'perum': { key: 'desaPerum', type: 'string' },
-  'perumahan': { key: 'desaPerum', type: 'string' },
-  'index': { key: 'indexNum', type: 'number' },
-  'indexnum': { key: 'indexNum', type: 'number' },
-  'index num': { key: 'indexNum', type: 'number' },
-  'homepass': { key: 'homepass', type: 'number' },
-  'home pass': { key: 'homepass', type: 'number' },
-  'hp': { key: 'homepass', type: 'number' },
-  'odp': { key: 'odp', type: 'number' },
-  'remarks tsa': { key: 'remarksTsa', type: 'string' },
-  'remarkstsa': { key: 'remarksTsa', type: 'string' },
-  'klasifikasi tsa': { key: 'klasifikasiTsa', type: 'string' },
-  'klasifikasitsa': { key: 'klasifikasiTsa', type: 'string' },
-  'pic tsa': { key: 'picTsa', type: 'string' },
-  'pictsa': { key: 'picTsa', type: 'string' },
-  'remarks jlm': { key: 'remarksJlm', type: 'string' },
-  'remarksjlm': { key: 'remarksJlm', type: 'string' },
-};
-
-const HEADER_KEYWORDS = ['no', 'provinsi', 'kabupaten', 'kecamatan', 'kelurahan', 'homepass', 'odp', 'category', 'index', 'remarks', 'klasifikasi', 'pic', 'desa', 'site'];
+const HEADER_KEYWORDS = ['no', 'nama', 'name', 'alamat', 'address', 'kabupaten', 'kecamatan', 'kelurahan', 'kode', 'code', 'status', 'date', 'tanggal', 'provinsi', 'region', 'city', 'location', 'district', 'description', 'notes', 'type', 'category', 'index', 'id'];
 
 function normalizeHeader(h: string): string {
   return h.toString().trim().toLowerCase().replace(/[_\-/()]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Build a unique fingerprint for a row based on key identifying fields.
- *  Used to detect duplicate rows during append import. */
-function buildRowFingerprint(r: {
-  provinsi?: string; kabupaten?: string; kecamatan?: string; kelurahan?: string;
-  kelRwSiteName?: string; desaPerum?: string; indexNum?: number; homepass?: number; odp?: number;
-  customData?: string;
-}): string {
-  const norm = (v: any) => String(v ?? '').trim().toLowerCase();
-  const parts = [
-    norm(r.provinsi), norm(r.kabupaten), norm(r.kecamatan), norm(r.kelurahan),
-    norm(r.kelRwSiteName), norm(r.desaPerum),
-    String(r.indexNum ?? 0), String(r.homepass ?? 0), String(r.odp ?? 0),
-  ];
-  // Include custom data in fingerprint for complete dedup
-  let customPart = '';
-  if (r.customData) {
-    try {
-      const cd = JSON.parse(r.customData);
-      const sorted = Object.entries(cd).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`);
-      customPart = sorted.join('|');
-    } catch { customPart = r.customData; }
-  }
-  return parts.join('||') + '||' + customPart;
+/** Build a unique fingerprint for a row based on customData. */
+function buildRowFingerprint(customData: string): string {
+  try {
+    const cd = JSON.parse(customData);
+    const sorted = Object.entries(cd).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`);
+    return sorted.join('|');
+  } catch { return customData; }
 }
 
 function findHeaderRow(allRows: any[][]): number {
@@ -103,36 +34,6 @@ function findHeaderRow(allRows: any[][]): number {
   return bestRow;
 }
 
-function autoDetectMapping(headers: string[]): {
-  baseMap: Record<string, string>;
-  customHeaders: string[];
-} {
-  const baseMap: Record<string, string> = {};
-  const customHeaders: string[] = [];
-  const usedFields = new Set<string>();
-
-  // Only use exact matching — fuzzy substring matching is too dangerous.
-  // E.g. "ODP Owner" contains "odp", "Undetected Notes" contains "no",
-  // "Name" is contained in "site name" — all would map to WRONG base fields.
-  for (const h of headers) {
-    const norm = normalizeHeader(h);
-    const match = BASE_FIELD_MAP[norm];
-    if (match && !usedFields.has(match.key)) {
-      baseMap[h] = match.key;
-      usedFields.add(match.key);
-    }
-  }
-
-  // All unmatched headers become custom columns
-  for (const h of headers) {
-    if (!baseMap[h]) {
-      customHeaders.push(h);
-    }
-  }
-
-  return { baseMap, customHeaders };
-}
-
 // Increase body size limit for file uploads (Next.js App Router)
 export const maxDuration = 120;
 
@@ -149,7 +50,6 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File;
     const mode = formData.get('mode') as string || 'replace';
 
-    // Validate file size before processing
     if (file && file.size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: `File terlalu besar (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimal ${MAX_FILE_SIZE / 1024 / 1024} MB.` }, { status: 413 });
     }
@@ -230,8 +130,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Tidak ada data ditemukan dalam file' }, { status: 400 });
     }
 
+    // ALL columns from Excel become custom columns (no base field mapping)
     const fileHeaders = Object.keys(rows[0]);
-    const { baseMap, customHeaders } = autoDetectMapping(fileHeaders);
 
     if (mode === 'replace') {
       await db.monitoringRow.deleteMany({ where: { projectId } });
@@ -243,22 +143,19 @@ export async function POST(request: NextRequest) {
     if (mode === 'append') {
       const existingRows = await db.monitoringRow.findMany({
         where: { projectId },
-        select: {
-          provinsi: true, kabupaten: true, kecamatan: true, kelurahan: true,
-          kelRwSiteName: true, desaPerum: true, indexNum: true, homepass: true, odp: true,
-          customData: true,
-        },
+        select: { customData: true },
       });
       for (const r of existingRows) {
-        existingFingerprints.add(buildRowFingerprint(r));
+        existingFingerprints.add(buildRowFingerprint(r.customData || '{}'));
       }
     }
 
+    // Create CustomColumn records for ALL headers
     const existingCustomCols = await db.customColumn.findMany({ where: { projectId } });
     const customColMap: Record<string, string> = {};
 
-    for (let i = 0; i < customHeaders.length; i++) {
-      const h = customHeaders[i];
+    for (let i = 0; i < fileHeaders.length; i++) {
+      const h = fileHeaders[i];
       const colName = h.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
       if (!colName || colName.startsWith('__empty')) continue;
       let existing = existingCustomCols.find(c => c.name === colName || c.label === h);
@@ -271,15 +168,11 @@ export async function POST(request: NextRequest) {
     }
 
     // --- Save original Excel column order to Project.columnOrder ---
-    // Build ordered list of ALL column keys (base + custom) in the original Excel order
     const columnOrder: string[] = [];
     for (const h of fileHeaders) {
-      if (baseMap[h]) {
-        columnOrder.push(baseMap[h]); // base field key
-      } else if (customColMap[h]) {
-        columnOrder.push(customColMap[h]); // custom column name
+      if (customColMap[h]) {
+        columnOrder.push(customColMap[h]);
       }
-      // Skip columns that were filtered out (empty names, etc.)
     }
     if (projectId && projectId !== 'default') {
       await db.project.update({
@@ -287,15 +180,10 @@ export async function POST(request: NextRequest) {
         data: { columnOrder: JSON.stringify(columnOrder) },
       });
     } else {
-      // For default project, also save column order
       await db.project.upsert({
         where: { id: 'default' },
         update: { columnOrder: JSON.stringify(columnOrder) },
-        create: {
-          id: 'default',
-          name: 'Default Project',
-          columnOrder: JSON.stringify(columnOrder),
-        },
+        create: { id: 'default', name: 'Default Project', columnOrder: JSON.stringify(columnOrder) },
       });
     }
 
@@ -305,55 +193,20 @@ export async function POST(request: NextRequest) {
       startOrder = (maxOrder?.orderNum || 0) + 1;
     }
 
-    // Build insert data and deduplicate in append mode
+    // Build insert data — ALL values go into customData
     const insertData: any[] = [];
     let skipped = 0;
     let orderIdx = 0;
 
     for (const row of rows) {
-      const data: any = {
-        projectId,
-        orderNum: 0, // will be set after dedup check
-        categoryBak: '',
-        provinsi: '',
-        kabupaten: '',
-        kecamatan: '',
-        kelurahan: '',
-        kelRwSiteName: '',
-        desaPerum: '',
-        indexNum: 0,
-        homepass: 0,
-        odp: 0,
-        remarksTsa: '',
-        klasifikasiTsa: '',
-        picTsa: '',
-        remarksJlm: '',
-      };
-
-      for (const [srcHeader, fieldKey] of Object.entries(baseMap)) {
-        const val = String(row[srcHeader] ?? '').trim();
-        const fieldInfo = Object.values(BASE_FIELD_MAP).find(f => f.key === fieldKey);
-        if (fieldInfo?.type === 'number') {
-          data[fieldKey] = parseInt(val) || 0;
-        } else {
-          data[fieldKey] = val;
-        }
-      }
-
       const customData: Record<string, string> = {};
-      for (const [srcHeader, colId] of Object.entries(customColMap)) {
-        customData[colId] = String(row[srcHeader] ?? '').trim();
+      for (const [srcHeader, colName] of Object.entries(customColMap)) {
+        customData[colName] = String(row[srcHeader] ?? '').trim();
       }
-      data.customData = JSON.stringify(customData);
 
       // Dedup check in append mode
       if (mode === 'append') {
-        const fp = buildRowFingerprint({
-          provinsi: data.provinsi, kabupaten: data.kabupaten, kecamatan: data.kecamatan,
-          kelurahan: data.kelurahan, kelRwSiteName: data.kelRwSiteName, desaPerum: data.desaPerum,
-          indexNum: data.indexNum, homepass: data.homepass, odp: data.odp,
-          customData: data.customData,
-        });
+        const fp = buildRowFingerprint(JSON.stringify(customData));
         if (existingFingerprints.has(fp)) {
           skipped++;
           continue;
@@ -361,9 +214,12 @@ export async function POST(request: NextRequest) {
         existingFingerprints.add(fp);
       }
 
-      data.orderNum = startOrder + orderIdx;
+      insertData.push({
+        projectId,
+        orderNum: startOrder + orderIdx,
+        customData: JSON.stringify(customData),
+      });
       orderIdx++;
-      insertData.push(data);
     }
 
     const BATCH_SIZE = 50;
@@ -385,8 +241,7 @@ export async function POST(request: NextRequest) {
           mode,
           rows: inserted,
           skipped,
-          baseColumns: Object.keys(baseMap),
-          customColumns: Object.keys(customColMap),
+          totalColumns: Object.keys(customColMap).length,
         }),
       },
     });
@@ -397,11 +252,8 @@ export async function POST(request: NextRequest) {
       skipped,
       totalInFile: rows.length,
       mode,
-      mapping: {
-        baseColumns: Object.fromEntries(Object.entries(baseMap).map(([src, field]) => [src, field])),
-        customColumns: Object.fromEntries(Object.entries(customColMap).map(([src, colId]) => [src, colId])),
-      },
-      totalCustomColsCreated: customHeaders.length,
+      mapping: Object.fromEntries(Object.entries(customColMap).map(([src, colId]) => [src, colId])),
+      totalCustomColsCreated: Object.keys(customColMap).length,
     });
   } catch (error: any) {
     if (error.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Tidak terautentikasi' }, { status: 401 });
