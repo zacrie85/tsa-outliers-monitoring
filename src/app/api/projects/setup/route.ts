@@ -2,174 +2,56 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 
-// Auto-setup: creates Project table, adds projectId columns, seeds default project
+// Auto-setup: ensures default project exists with correct schema.
 // Safe to call multiple times (idempotent)
 export async function POST() {
   try {
     await requireAuth();
     const results: string[] = [];
 
-    // 1. Create Project table if not exists
-    try {
-      await db.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "Project" (
-          "id" TEXT NOT NULL PRIMARY KEY,
-          "name" TEXT NOT NULL,
-          "description" TEXT,
-          "color" TEXT NOT NULL DEFAULT '#64b5f6',
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      results.push('Project table created/verified');
-    } catch (e: any) {
-      results.push(`Project table: ${e.message}`);
+    // 1. Ensure default project exists
+    const projectCount = await db.project.count();
+    if (projectCount === 0) {
+      await db.project.create({
+        data: {
+          id: 'default',
+          name: 'TSA Outliers Monitoring',
+          description: 'Proyek default',
+          color: '#64b5f6',
+          columnOrder: '[]',
+        },
+      });
+      results.push('Default project created');
+    } else {
+      results.push(`Projects already exist (${projectCount})`);
     }
 
-    // 2. Add projectId to MonitoringRow if not exists
+    // 2. Backfill: set projectId = 'default' for any rows/columns with NULL projectId
     try {
-      await db.$executeRawUnsafe(`
-        DO $$ BEGIN
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'MonitoringRow' AND column_name = 'projectId') THEN
-            ALTER TABLE "MonitoringRow" ADD COLUMN "projectId" TEXT;
-          END IF;
-        END $$;
-      `);
-      results.push('MonitoringRow.projectId added/verified');
-    } catch (e: any) {
-      results.push(`MonitoringRow.projectId: ${e.message}`);
-    }
-
-    // 3. Add projectId to CustomColumn if not exists
-    try {
-      await db.$executeRawUnsafe(`
-        DO $$ BEGIN
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'CustomColumn' AND column_name = 'projectId') THEN
-            ALTER TABLE "CustomColumn" ADD COLUMN "projectId" TEXT;
-          END IF;
-        END $$;
-      `);
-      results.push('CustomColumn.projectId added/verified');
-    } catch (e: any) {
-      results.push(`CustomColumn.projectId: ${e.message}`);
-    }
-
-    // 4. Add projectId to ChartConfig if not exists
-    try {
-      await db.$executeRawUnsafe(`
-        DO $$ BEGIN
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'ChartConfig' AND column_name = 'projectId') THEN
-            ALTER TABLE "ChartConfig" ADD COLUMN "projectId" TEXT;
-          END IF;
-        END $$;
-      `);
-      results.push('ChartConfig.projectId added/verified');
-    } catch (e: any) {
-      results.push(`ChartConfig.projectId: ${e.message}`);
-    }
-
-    // 5. Seed default project if none exists
-    try {
-      const count = await db.project.count();
-      if (count === 0) {
-        await db.project.create({
-          data: {
-            id: 'default',
-            name: 'TSA Outliers Monitoring',
-            description: 'Proyek default - data TSA yang sudah ada',
-            color: '#64b5f6',
-          },
-        });
-        results.push('Default project seeded');
-      } else {
-        results.push('Projects already exist');
-      }
-    } catch (e: any) {
-      try {
-        await db.$queryRawUnsafe(`
-          INSERT INTO "Project" ("id", "name", "description", "color", "createdAt", "updatedAt")
-          VALUES ('default', 'TSA Outliers Monitoring', 'Proyek default - data TSA yang sudah ada', '#64b5f6', NOW(), NOW())
-          ON CONFLICT DO NOTHING;
-        `);
-        results.push('Default project seeded via raw SQL');
-      } catch (e2: any) {
-        results.push(`Seed: ${e2.message}`);
-      }
-    }
-
-    // 6. Backfill: set projectId = 'default' for any rows that have NULL projectId
-    try {
-      await db.$executeRawUnsafe(`UPDATE "MonitoringRow" SET "projectId" = 'default' WHERE "projectId" IS NULL`);
-      results.push('MonitoringRow backfilled');
-    } catch (e: any) {
-      results.push(`MonitoringRow backfill: ${e.message}`);
-    }
+      const result = await db.monitoringRow.updateMany({
+        where: { projectId: null },
+        data: { projectId: 'default' },
+      });
+      if (result.count > 0) results.push(`Backfilled ${result.count} rows with projectId`);
+    } catch { /* skip */ }
 
     try {
-      await db.$executeRawUnsafe(`UPDATE "CustomColumn" SET "projectId" = 'default' WHERE "projectId" IS NULL`);
-      results.push('CustomColumn backfilled');
-    } catch (e: any) {
-      results.push(`CustomColumn backfill: ${e.message}`);
-    }
+      const result = await db.customColumn.updateMany({
+        where: { projectId: null },
+        data: { projectId: 'default' },
+      });
+      if (result.count > 0) results.push(`Backfilled ${result.count} columns with projectId`);
+    } catch { /* skip */ }
 
     try {
-      await db.$executeRawUnsafe(`UPDATE "ChartConfig" SET "projectId" = 'default' WHERE "projectId" IS NULL`);
-      results.push('ChartConfig backfilled');
-    } catch (e: any) {
-      results.push(`ChartConfig backfill: ${e.message}`);
-    }
+      const result = await db.chartConfig.updateMany({
+        where: { projectId: null },
+        data: { projectId: 'default' },
+      });
+      if (result.count > 0) results.push(`Backfilled ${result.count} charts with projectId`);
+    } catch { /* skip */ }
 
-    // 7. Create FormConfig table if not exists
-    try {
-      await db.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "FormConfig" (
-          "id" TEXT NOT NULL PRIMARY KEY,
-          "projectId" TEXT,
-          "title" TEXT NOT NULL,
-          "description" TEXT NOT NULL DEFAULT '',
-          "fields" TEXT NOT NULL DEFAULT '[]',
-          "isActive" BOOLEAN NOT NULL DEFAULT true,
-          "submissionCount" INTEGER NOT NULL DEFAULT 0,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      results.push('FormConfig table created/verified');
-    } catch (e: any) {
-      results.push(`FormConfig table: ${e.message}`);
-    }
-
-    // 8. Add projectId to FormConfig if not exists
-    try {
-      await db.$executeRawUnsafe(`
-        DO $$ BEGIN
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'FormConfig' AND column_name = 'projectId') THEN
-            ALTER TABLE "FormConfig" ADD COLUMN "projectId" TEXT;
-          END IF;
-        END $$;
-      `);
-    } catch (e: any) {
-      results.push(`FormConfig.projectId: ${e.message}`);
-    }
-
-    // 9. Add referenceColumn & referenceLabel to FormConfig
-    try {
-      await db.$executeRawUnsafe(`
-        DO $$ BEGIN
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'FormConfig' AND column_name = 'referenceColumn') THEN
-            ALTER TABLE "FormConfig" ADD COLUMN "referenceColumn" TEXT;
-          END IF;
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'FormConfig' AND column_name = 'referenceLabel') THEN
-            ALTER TABLE "FormConfig" ADD COLUMN "referenceLabel" TEXT;
-          END IF;
-        END $$;
-      `);
-      results.push('FormConfig reference columns added/verified');
-    } catch (e: any) {
-      results.push(`FormConfig reference: ${e.message}`);
-    }
-
-    // 10. Migrate customData keys: CUID → column name (if needed)
+    // 3. Migrate customData keys: CUID → column name (if needed)
     try {
       const columns = await db.customColumn.findMany({ select: { id: true, name: true } });
       if (columns.length > 0) {
@@ -205,9 +87,7 @@ export async function POST() {
             }
           } catch { /* skip row */ }
         }
-        results.push(`customData migration: ${migrated} rows updated (CUID→name keys)`);
-      } else {
-        results.push('customData migration: no custom columns, skipped');
+        results.push(`customData migration: ${migrated} rows updated`);
       }
     } catch (e: any) {
       results.push(`customData migration: ${e.message}`);

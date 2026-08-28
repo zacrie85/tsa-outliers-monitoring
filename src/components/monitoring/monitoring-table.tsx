@@ -137,7 +137,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const handleAddColumn = async () => {
     if (!newColName.trim() || !newColLabel.trim()) return;
     try {
-      const res = await fetch('/api/columns', {
+      const res = await apiFetch('/api/columns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -152,7 +152,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
 
   const handleToggleLock = async (col: CustomColumn) => {
     try {
-      await fetch('/api/columns', {
+      await apiFetch('/api/columns', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: col.id, label: col.label, divisionId: col.divisionId, isLocked: !col.isLocked, order: col.order }),
@@ -164,7 +164,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const handleDeleteColumn = async (colId: string) => {
     if (!confirm('Hapus kolom ini?')) return;
     try {
-      await fetch(`/api/columns?id=${colId}`, { method: 'DELETE' });
+      await apiFetch(`/api/columns?id=${colId}`, { method: 'DELETE' });
       fetchData();
     } catch (err) { console.error(err); }
   };
@@ -188,7 +188,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     const col = customCols.find(c => c.id === editingCol);
     if (!col) return;
     try {
-      const res = await fetch('/api/columns', {
+      const res = await apiFetch('/api/columns', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -218,16 +218,17 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const handleDeleteRow = async (rowId: string) => {
     if (!confirm('Hapus baris ini?')) return;
     try {
-      await fetch(`/api/monitoring/rows/${rowId}`, { method: 'DELETE' });
+      await apiFetch(`/api/monitoring/rows/${rowId}`, { method: 'DELETE' });
       fetchData();
     } catch (err) { console.error(err); }
   };
 
   const getCellValue = (row: MonitoringRow, colKey: string) => {
-    const customData = JSON.parse(row.customData || '{}');
-    if (colKey in customData) return String(customData[colKey]);
-    const val = (row as any)[colKey];
-    return val !== undefined && val !== null ? String(val) : '';
+    try {
+      const customData = JSON.parse(row.customData || '{}');
+      if (colKey in customData) return String(customData[colKey]);
+    } catch {}
+    return '';
   };
 
   const getDivisionColor = (divId: string | null) => {
