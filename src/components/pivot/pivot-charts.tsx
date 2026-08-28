@@ -1,7 +1,7 @@
 'use client';
 import { apiFetch } from '@/lib/api';
 import { useAppStore } from '@/store/app-store';
-import { useProjectFields, useProjectSwitchRefresh, FieldDef } from '@/hooks/use-project-fields';
+import { useProjectFields, FieldDef } from '@/hooks/use-project-fields';
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
@@ -34,34 +34,13 @@ const PALETTES = [
   { name: 'Multi', colors: ['#64b5f6', '#81c784', '#ffb74d', '#e57373', '#ba68c8', '#4dd0e1', '#fff176', '#ff8a65'] },
 ];
 
-const DEFAULT_BASE_COL_OPTIONS = [
-  { key: 'provinsi', label: 'Provinsi' },
-  { key: 'kabupaten', label: 'Kabupaten' },
-  { key: 'kecamatan', label: 'Kecamatan' },
-  { key: 'kelurahan', label: 'Kelurahan' },
-  { key: 'kelRwSiteName', label: 'Kel RW/Site Name' },
-  { key: 'desaPerum', label: 'Desa/Perum' },
-  { key: 'categoryBak', label: 'Category BAK' },
-  { key: 'klasifikasiTsa', label: 'Klasifikasi TSA' },
-  { key: 'picTsa', label: 'PIC TSA' },
-  { key: 'remarksTsa', label: 'Remarks TSA' },
-  { key: 'remarksJlm', label: 'Remarks JLM' },
-];
-
 const DEFAULT_AGGREGATIONS = [
-  { value: 'count', label: 'Jumlah (Count)' },
-  { value: 'sum_homepass', label: 'Total Homepass' },
-  { value: 'sum_odp', label: 'Total ODP' },
-  { value: 'avg_homepass', label: 'Rata-rata Homepass' },
-  { value: 'avg_odp', label: 'Rata-rata ODP' },
+  { value: 'count', label: 'Count' },
+  { value: 'sum', label: 'Sum' },
+  { value: 'avg', label: 'Average' },
 ];
 
-const DEFAULT_HIERARCHY = [
-  { key: 'provinsi', label: 'Provinsi' },
-  { key: 'kabupaten', label: 'Kabupaten' },
-  { key: 'kecamatan', label: 'Kecamatan' },
-  { key: 'kelurahan', label: 'Kelurahan' },
-];
+const DEFAULT_HIERARCHY: { key: string; label: string }[] = [];
 
 
 interface PivotRow {
@@ -83,12 +62,17 @@ interface PivotChart {
 
 interface MonitoringRow {
   id: string;
-  orderNum: number; indexNum: number;
-  provinsi: string; kabupaten: string; kecamatan: string; kelurahan: string;
-  kelRwSiteName: string; desaPerum: string;
-  categoryBak: string; klasifikasiTsa: string; picTsa: string;
-  remarksTsa: string; remarksJlm: string;
-  homepass: number; odp: number; customData: string;
+  orderNum: number;
+  customData: string;
+}
+
+function getFieldValue(row: MonitoringRow, key: string): string {
+  try {
+    const data = JSON.parse(row.customData || '{}');
+    return String(data[key] ?? '');
+  } catch {
+    return '';
+  }
 }
 
 function createEmptyChart(index: number): PivotChart {
@@ -182,61 +166,36 @@ function PivotCard({
   const autoGenerate = useCallback(() => {
     if (!chart.groupCol || rows.length === 0) return;
 
-    // Use dynamic aggregation: collect numeric values per group
+    // Determine the numeric field key for sum/avg (from project fields dynamic aggs like sum_xxx, avg_xxx)
+    const aggFieldKey = (chart.aggMethod.startsWith('sum_') || chart.aggMethod.startsWith('avg_'))
+      ? chart.aggMethod.replace(/^(sum|avg)_/, '')
+      : null;
+
     const groups: Record<string, { count: number; nums: Record<string, number> }> = {};
     rows.forEach(row => {
-      let val = 'Lainnya';
-      if (chart.groupCol in row) {
-        val = String((row as any)[chart.groupCol] || 'Lainnya');
-      } else {
-        try {
-          const cd = JSON.parse(row.customData || '{}');
-          val = String(cd[chart.groupCol] || 'Lainnya');
-        } catch { /* */ }
-      }
+      const val = getFieldValue(row, chart.groupCol) || 'Lainnya';
       if (!groups[val]) groups[val] = { count: 0, nums: {} };
       groups[val].count++;
-      // Collect base numeric fields
-      groups[val].nums['homepass'] = (groups[val].nums['homepass'] || 0) + (row.homepass || 0);
-      groups[val].nums['odp'] = (groups[val].nums['odp'] || 0) + (row.odp || 0);
-    });
-
-    // If dynamic agg, compute those values too
-    if (chart.aggMethod.startsWith('sum_') || chart.aggMethod.startsWith('avg_')) {
-      const fieldKey = chart.aggMethod.replace(/^(sum|avg)_/, '');
-      if (fieldKey !== 'homepass' && fieldKey !== 'odp') {
-        rows.forEach(row => {
-          let val = 'Lainnya';
-          if (chart.groupCol in row) {
-            val = String((row as any)[chart.groupCol] || 'Lainnya');
-          } else {
-            try { val = String(JSON.parse(row.customData || '{}')[chart.groupCol] || 'Lainnya'); } catch {}
-          }
-          let num = 0;
-          try { num = parseFloat(JSON.parse(row.customData || '{}')[fieldKey]) || 0; } catch {}
-          groups[val].nums[fieldKey] = (groups[val].nums[fieldKey] || 0) + num;
-        });
+      // Collect numeric value for the aggregation field from customData
+      if (aggFieldKey) {
+        const num = parseFloat(getFieldValue(row, aggFieldKey)) || 0;
+        groups[val].nums[aggFieldKey] = (groups[val].nums[aggFieldKey] || 0) + num;
       }
-    }
+    });
 
     const data: PivotRow[] = Object.entries(groups)
       .map(([name, d]) => {
         let value = 0;
-        if (chart.aggMethod === 'count') value = d.count;
-        else if (chart.aggMethod.startsWith('sum_')) {
-          const fk = chart.aggMethod.replace('sum_', '');
-          value = d.nums[fk] || 0;
-        } else if (chart.aggMethod.startsWith('avg_')) {
-          const fk = chart.aggMethod.replace('avg_', '');
-          const total = d.nums[fk] || 0;
+        if (chart.aggMethod === 'count') {
+          value = d.count;
+        } else if (chart.aggMethod.startsWith('sum_') && aggFieldKey) {
+          value = d.nums[aggFieldKey] || 0;
+        } else if (chart.aggMethod.startsWith('avg_') && aggFieldKey) {
+          const total = d.nums[aggFieldKey] || 0;
           value = d.count > 0 ? Math.round(total / d.count) : 0;
+        } else {
+          value = d.count;
         }
-        // Legacy fallback
-        else if (chart.aggMethod === 'sum_homepass') value = d.nums['homepass'];
-        else if (chart.aggMethod === 'sum_odp') value = d.nums['odp'];
-        else if (chart.aggMethod === 'avg_homepass') value = d.count > 0 ? Math.round(d.nums['homepass'] / d.count) : 0;
-        else if (chart.aggMethod === 'avg_odp') value = d.count > 0 ? Math.round(d.nums['odp'] / d.count) : 0;
-        else value = d.count;
         return { id: `r-${name}-${Date.now()}`, label: name, value };
       })
       .sort((a, b) => b.value - a.value)
@@ -593,36 +552,22 @@ const PIVOT_ACCENTS = [
 /* ─── Helpers for Pivot Table ─── */
 
 function getRowValue(row: MonitoringRow, colKey: string): string {
-  if (colKey in row) return String((row as any)[colKey] || 'Lainnya');
-  try { return String(JSON.parse(row.customData || '{}')[colKey] || 'Lainnya'); } catch { return 'Lainnya'; }
+  return getFieldValue(row, colKey) || 'Lainnya';
 }
 
 function computeAgg(items: MonitoringRow[], method: string, projectFields?: FieldDef[]): number {
   if (items.length === 0) return 0;
-  switch (method) {
-    case 'count': return items.length;
-    default: {
-      // Dynamic: sum_xxx or avg_xxx
-      if (method.startsWith('sum_') || method.startsWith('avg_')) {
-        const fieldKey = method.replace(/^(sum|avg)_/, '');
-        const nums = items.map(r => {
-          if (fieldKey === 'homepass') return r.homepass || 0;
-          if (fieldKey === 'odp') return r.odp || 0;
-          if (fieldKey === 'indexNum') return r.indexNum || 0;
-          try { return parseFloat(JSON.parse(r.customData || '{}')[fieldKey]) || 0; } catch { return 0; }
-        });
-        if (nums.length === 0) return 0;
-        if (method.startsWith('sum_')) return nums.reduce((s, v) => s + v, 0);
-        return Math.round(nums.reduce((s, v) => s + v, 0) / nums.length);
-      }
-      // Fallback for legacy methods
-      if (method === 'sum_homepass') return items.reduce((s, r) => s + (r.homepass || 0), 0);
-      if (method === 'sum_odp') return items.reduce((s, r) => s + (r.odp || 0), 0);
-      if (method === 'avg_homepass') return Math.round(items.reduce((s, r) => s + (r.homepass || 0), 0) / items.length);
-      if (method === 'avg_odp') return Math.round(items.reduce((s, r) => s + (r.odp || 0), 0) / items.length);
-      return items.length;
-    }
+  if (method === 'count') return items.length;
+  // Dynamic: sum_xxx or avg_xxx
+  if (method.startsWith('sum_') || method.startsWith('avg_')) {
+    const fieldKey = method.replace(/^(sum|avg)_/, '');
+    const nums = items.map(r => parseFloat(getFieldValue(r, fieldKey)) || 0);
+    if (nums.length === 0) return 0;
+    if (method.startsWith('sum_')) return nums.reduce((s, v) => s + v, 0);
+    return Math.round(nums.reduce((s, v) => s + v, 0) / nums.length);
   }
+  // Generic sum / avg (no field suffix) — not meaningful without a field, fall back to count
+  return items.length;
 }
 
 /* ─── Cascading Filter Hierarchy ─── */
@@ -640,8 +585,8 @@ function PivotTableSection({ rows, allColOptions, defaultRowField = 'provinsi', 
   hierarchy?: { key: string; label: string }[];
   aggregations?: { value: string; label: string }[];
 }) {
-  const activeHierarchy = hierarchy || DEFAULT_activeHierarchy;
-  const activeAggregations = aggregations || DEFAULT_activeAggregations;
+  const activeHierarchy = hierarchy || DEFAULT_HIERARCHY;
+  const activeAggregations = aggregations || DEFAULT_AGGREGATIONS;
   const [rowField, setRowField] = useState(defaultRowField);
   const [colField, setColField] = useState(defaultColField);
   const [aggMethod, setAggMethod] = useState('count');
@@ -1104,15 +1049,11 @@ export function PivotCharts() {
   const customColOptions = customCols.map((c: any) => ({ key: c.name || c.id, label: c.label }));
 
   // Fetch dynamic field definitions for the active project
-  const refreshKey = useProjectSwitchRefresh();
   const { fields: projectFields } = useProjectFields();
 
   // Build dynamic options from project fields
   const dynamicColOptions = useMemo(() => {
-    if (projectFields.length > 0) {
-      return projectFields.filter(f => !f.isNumeric).map(f => ({ key: f.key, label: f.label }));
-    }
-    return DEFAULT_BASE_COL_OPTIONS;
+    return projectFields.filter(f => !f.isNumeric).map(f => ({ key: f.key, label: f.label }));
   }, [projectFields]);
 
   const dynamicAggregations = useMemo(() => {
@@ -1130,12 +1071,11 @@ export function PivotCharts() {
 
   const dynamicHierarchy = useMemo(() => {
     if (projectFields.length > 0) {
-      // Use text fields that look like geographic hierarchy
       const geoKeys = ['provinsi', 'kabupaten', 'kecamatan', 'kelurahan'];
       const geo = projectFields.filter(f => geoKeys.includes(f.key));
       if (geo.length > 0) return geo.map(f => ({ key: f.key, label: f.label }));
     }
-    return DEFAULT_HIERARCHY;
+    return [];
   }, [projectFields]);
 
   const allColOptions = [...dynamicColOptions, ...customColOptions];

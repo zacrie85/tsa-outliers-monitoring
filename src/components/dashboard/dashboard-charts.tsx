@@ -20,23 +20,10 @@ const CHART_TYPES = [
   { value: 'radar', label: 'Radar Chart', icon: Activity },
 ];
 
-const DEFAULT_BASE_COL_OPTIONS = [
-  { key: 'provinsi', label: 'Provinsi' },
-  { key: 'kabupaten', label: 'Kabupaten' },
-  { key: 'kecamatan', label: 'Kecamatan' },
-  { key: 'klasifikasiTsa', label: 'Klasifikasi TSA' },
-  { key: 'picTsa', label: 'PIC TSA' },
-  { key: 'categoryBak', label: 'Category BAK' },
-  { key: 'homepass', label: 'Homepass' },
-  { key: 'odp', label: 'ODP' },
-];
-
 const DEFAULT_AGGREGATIONS = [
   { value: 'count', label: 'Jumlah (Count)' },
-  { value: 'sum_homepass', label: 'Total Homepass' },
-  { value: 'sum_odp', label: 'Total ODP' },
-  { value: 'avg_homepass', label: 'Rata-rata Homepass' },
-  { value: 'avg_odp', label: 'Rata-rata ODP' },
+  { value: 'sum', label: 'Total (Sum)' },
+  { value: 'avg', label: 'Rata-rata (Avg)' },
 ];
 
 const COLORS = ['#64b5f6', '#81c784', '#ffb74d', '#e57373', '#ba68c8', '#4dd0e1', '#fff176', '#ff8a65', '#a5d6a7', '#90caf9'];
@@ -51,15 +38,17 @@ interface ChartConfig {
 
 interface MonitoringRow {
   id: string;
-  provinsi: string;
-  kabupaten: string;
-  kecamatan: string;
-  klasifikasiTsa: string;
-  picTsa: string;
-  categoryBak: string;
-  homepass: number;
-  odp: number;
+  orderNum: number;
   customData: string;
+}
+
+function getFieldValue(row: MonitoringRow, key: string): string {
+  try {
+    const cd = JSON.parse(row.customData || '{}');
+    return String(cd[key] ?? '');
+  } catch {
+    return '';
+  }
 }
 
 function SingleChart({
@@ -81,7 +70,8 @@ function SingleChart({
   const chartState = JSON.parse(chart.config || '{}');
   const [groupCol, setGroupCol] = useState(chartState.groupCol || '');
   const [aggMethod, setAggMethod] = useState(chartState.aggMethod || 'count');
-  const [filterProv, setFilterProv] = useState(chartState.filterProv || '');
+  const [filterCol, setFilterCol] = useState(chartState.filterCol || '');
+  const [filterVal, setFilterVal] = useState(chartState.filterVal || chartState.filterProv || '');
   const [chartType, setChartType] = useState(chartState.chartType || chart.chartType);
   const [title, setTitle] = useState(chartState.title || chart.title);
   const chartRef = useRef<HTMLDivElement>(null);
@@ -91,44 +81,35 @@ function SingleChart({
     ...customCols.map(c => ({ key: c.name || c.id, label: c.label })),
   ];
 
-  const provOptions = [...new Set(rows.map(r => r.provinsi).filter(Boolean))];
+  // Dynamic filter value options based on selected filter column
+  const filterOptions = useMemo(() => {
+    if (!filterCol) return [];
+    return [...new Set(rows.map(r => getFieldValue(r, filterCol)).filter(Boolean))].sort();
+  }, [rows, filterCol]);
 
-  const filteredRows = filterProv
-    ? rows.filter(r => r.provinsi === filterProv)
+  const filteredRows = filterCol && filterVal
+    ? rows.filter(r => getFieldValue(r, filterCol) === filterVal)
     : rows;
-
-  const getGroupValue = (row: MonitoringRow, colKey: string): string => {
-    if (colKey in row) return String((row as any)[colKey] || 'Lainnya');
-    try {
-      const cd = JSON.parse(row.customData || '{}');
-      return String(cd[colKey] || 'Lainnya');
-    } catch { return 'Lainnya'; }
-  };
-
-  const getNumValue = (row: MonitoringRow, fieldKey: string): number => {
-    if (fieldKey === 'homepass') return row.homepass || 0;
-    if (fieldKey === 'odp') return row.odp || 0;
-    if (fieldKey === 'indexNum') return row.indexNum || 0;
-    try { return parseFloat(JSON.parse(row.customData || '{}')[fieldKey]) || 0; } catch { return 0; }
-  };
 
   const processData = () => {
     if (!groupCol) return [];
 
-    // Dynamic: collect all numeric values per group
+    // Dynamic: collect all values per group
     const groups: Record<string, { count: number; values: Record<string, number> }> = {};
     filteredRows.forEach(row => {
-      const val = getGroupValue(row, groupCol);
+      const val = getFieldValue(row, groupCol) || 'Lainnya';
       if (!groups[val]) groups[val] = { count: 0, values: {} };
       groups[val].count++;
     });
 
-    // If using a dynamic agg, compute numeric values
-    if (aggMethod !== 'count' && (aggMethod.startsWith('sum_') || aggMethod.startsWith('avg_'))) {
+    // If using a field-specific aggregation (sum_FIELD / avg_FIELD), compute numeric values
+    if (aggMethod.startsWith('sum_') || aggMethod.startsWith('avg_')) {
       const fieldKey = aggMethod.replace(/^(sum|avg)_/, '');
       filteredRows.forEach(row => {
-        const val = getGroupValue(row, groupCol);
-        groups[val].values[fieldKey] = (groups[val].values[fieldKey] || 0) + getNumValue(row, fieldKey);
+        const val = getFieldValue(row, groupCol) || 'Lainnya';
+        const num = parseFloat(getFieldValue(row, fieldKey)) || 0;
+        if (!groups[val].values[fieldKey]) groups[val].values[fieldKey] = 0;
+        groups[val].values[fieldKey]! += num;
       });
     }
 
@@ -145,12 +126,8 @@ function SingleChart({
           const total = data.values[fieldKey] || 0;
           value = data.count > 0 ? Math.round(total / data.count) : 0;
         } else {
-          // Legacy fallback
-          if (aggMethod === 'sum_homepass') value = filteredRows.filter(r => getGroupValue(r, groupCol) === name).reduce((s, r) => s + (r.homepass || 0), 0);
-          else if (aggMethod === 'sum_odp') value = filteredRows.filter(r => getGroupValue(r, groupCol) === name).reduce((s, r) => s + (r.odp || 0), 0);
-          else if (aggMethod === 'avg_homepass') { const hp = filteredRows.filter(r => getGroupValue(r, groupCol) === name); value = hp.length > 0 ? Math.round(hp.reduce((s, r) => s + (r.homepass || 0), 0) / hp.length) : 0; }
-          else if (aggMethod === 'avg_odp') { const hp = filteredRows.filter(r => getGroupValue(r, groupCol) === name); value = hp.length > 0 ? Math.round(hp.reduce((s, r) => s + (r.odp || 0), 0) / hp.length) : 0; }
-          else value = data.count;
+          // Generic sum/avg without field — fallback to count
+          value = data.count;
         }
         return { name, value };
       })
@@ -166,7 +143,8 @@ function SingleChart({
       chartType,
       groupCol,
       aggMethod,
-      filterProv,
+      filterCol,
+      filterVal,
     });
     setShowSettings(false);
   };
@@ -344,13 +322,23 @@ function SingleChart({
               </select>
             </div>
           </div>
-          <div className="flex items-center justify-between">
-            <select value={filterProv} onChange={(e) => setFilterProv(e.target.value)} className="px-3 py-2 glass-input rounded-lg text-xs">
-              <option value="" style={{ background: '#1a1a2e' }}>Semua Provinsi</option>
-              {provOptions.map(p => (
-                <option key={p} value={p} style={{ background: '#1a1a2e' }}>{p}</option>
-              ))}
-            </select>
+          <div className="flex items-center gap-3 justify-between">
+            <div className="flex items-center gap-2">
+              <select value={filterCol} onChange={(e) => { setFilterCol(e.target.value); setFilterVal(''); }} className="px-3 py-2 glass-input rounded-lg text-xs">
+                <option value="" style={{ background: '#1a1a2e' }}>Filter Kolom</option>
+                {allColOptions.map(co => (
+                  <option key={co.key} value={co.key} style={{ background: '#1a1a2e' }}>{co.label}</option>
+                ))}
+              </select>
+              {filterCol && (
+                <select value={filterVal} onChange={(e) => setFilterVal(e.target.value)} className="px-3 py-2 glass-input rounded-lg text-xs">
+                  <option value="" style={{ background: '#1a1a2e' }}>Semua</option>
+                  {filterOptions.map(opt => (
+                    <option key={opt} value={opt} style={{ background: '#1a1a2e' }}>{opt}</option>
+                  ))}
+                </select>
+              )}
+            </div>
             <button onClick={handleSave} className="flex items-center gap-1 px-4 py-2 glass-btn rounded-lg text-xs">
               <Save className="w-3.5 h-3.5" /> Simpan
             </button>
@@ -374,12 +362,9 @@ export function DashboardCharts() {
   const refreshKey = useProjectSwitchRefresh();
   const { fields: projectFields } = useProjectFields();
 
-  // Build dynamic options from project fields
+  // Build dynamic options from project fields only (no hardcoded base columns)
   const dynamicColOptions = useMemo(() => {
-    if (projectFields.length > 0) {
-      return projectFields.map(f => ({ key: f.key, label: f.label }));
-    }
-    return DEFAULT_BASE_COL_OPTIONS;
+    return projectFields.map(f => ({ key: f.key, label: f.label }));
   }, [projectFields]);
 
   const dynamicAggregations = useMemo(() => {
