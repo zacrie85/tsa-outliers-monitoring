@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
       let existing = existingCustomCols.find(c => c.name === colName || c.label === h);
       if (!existing) {
         existing = await db.customColumn.create({
-          data: { name: colName, label: h, order: existingCustomCols.length + i + 1 },
+          data: { projectId, name: colName, label: h, order: existingCustomCols.length + i + 1 },
         });
       }
       customColMap[h] = existing.name;
