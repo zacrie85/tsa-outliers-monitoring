@@ -263,7 +263,7 @@ export async function POST(request: NextRequest) {
           data: { name: colName, label: h, order: existingCustomCols.length + i + 1 },
         });
       }
-      customColMap[h] = existing.id;
+      customColMap[h] = existing.name;
     }
 
     let startOrder = 1;

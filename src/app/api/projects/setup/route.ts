@@ -169,6 +169,50 @@ export async function POST() {
       results.push(`FormConfig reference: ${e.message}`);
     }
 
+    // 10. Migrate customData keys: CUID → column name (if needed)
+    try {
+      const columns = await db.customColumn.findMany({ select: { id: true, name: true } });
+      if (columns.length > 0) {
+        const idToName: Record<string, string> = {};
+        for (const col of columns) idToName[col.id] = col.name;
+
+        const rows = await db.monitoringRow.findMany({
+          select: { id: true, customData: true },
+        });
+        let migrated = 0;
+        for (const row of rows) {
+          try {
+            const data = JSON.parse(row.customData || '{}');
+            if (!data || typeof data !== 'object') continue;
+            let needsUpdate = false;
+            const newData: Record<string, string> = {};
+            for (const [key, value] of Object.entries(data)) {
+              if (key in idToName) {
+                const newKey = idToName[key];
+                if (newKey !== key) {
+                  needsUpdate = true;
+                  if (!(newKey in newData && newData[newKey])) newData[newKey] = String(value ?? '');
+                } else {
+                  newData[key] = String(value ?? '');
+                }
+              } else {
+                newData[key] = String(value ?? '');
+              }
+            }
+            if (needsUpdate) {
+              await db.monitoringRow.update({ where: { id: row.id }, data: { customData: JSON.stringify(newData) } });
+              migrated++;
+            }
+          } catch { /* skip row */ }
+        }
+        results.push(`customData migration: ${migrated} rows updated (CUID→name keys)`);
+      } else {
+        results.push('customData migration: no custom columns, skipped');
+      }
+    } catch (e: any) {
+      results.push(`customData migration: ${e.message}`);
+    }
+
     return NextResponse.json({ success: true, results });
   } catch (error: any) {
     if (error.message === 'UNAUTHORIZED') return NextResponse.json({ error: 'Tidak terautentikasi' }, { status: 401 });
