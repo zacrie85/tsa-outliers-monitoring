@@ -5,36 +5,46 @@ import { getProjectId } from '@/lib/project-context';
 
 const BASE_FIELD_MAP: Record<string, { key: string; type: 'string' | 'number' }> = {
   'no': { key: 'orderNum', type: 'number' },
+  'no.': { key: 'orderNum', type: 'number' },
   'order': { key: 'orderNum', type: 'number' },
   'ordernum': { key: 'orderNum', type: 'number' },
+  'no urut': { key: 'orderNum', type: 'number' },
+  'nomor': { key: 'orderNum', type: 'number' },
   'category bak': { key: 'categoryBak', type: 'string' },
   'category_bak': { key: 'categoryBak', type: 'string' },
   'categorybak': { key: 'categoryBak', type: 'string' },
   'provinsi': { key: 'provinsi', type: 'string' },
   'province': { key: 'provinsi', type: 'string' },
   'kabupaten': { key: 'kabupaten', type: 'string' },
+  'kabupaten kota': { key: 'kabupaten', type: 'string' },
   'kabupaten/kota': { key: 'kabupaten', type: 'string' },
   'city': { key: 'kabupaten', type: 'string' },
+  'kota': { key: 'kabupaten', type: 'string' },
   'kecamatan': { key: 'kecamatan', type: 'string' },
   'district': { key: 'kecamatan', type: 'string' },
   'kelurahan': { key: 'kelurahan', type: 'string' },
   'kel': { key: 'kelurahan', type: 'string' },
+  'kelurahan desa': { key: 'kelurahan', type: 'string' },
   'kelurahan/desa': { key: 'kelurahan', type: 'string' },
   'village': { key: 'kelurahan', type: 'string' },
   'kel rw/site name': { key: 'kelRwSiteName', type: 'string' },
+  'kel rw site name': { key: 'kelRwSiteName', type: 'string' },
   'kel_rw_site_name': { key: 'kelRwSiteName', type: 'string' },
   'kelrw/sitename': { key: 'kelRwSiteName', type: 'string' },
   'site name': { key: 'kelRwSiteName', type: 'string' },
   'sitename': { key: 'kelRwSiteName', type: 'string' },
   'desa/perum': { key: 'desaPerum', type: 'string' },
+  'desa perum': { key: 'desaPerum', type: 'string' },
   'desa_perum': { key: 'desaPerum', type: 'string' },
   'desa': { key: 'desaPerum', type: 'string' },
   'perum': { key: 'desaPerum', type: 'string' },
+  'perumahan': { key: 'desaPerum', type: 'string' },
   'index': { key: 'indexNum', type: 'number' },
   'indexnum': { key: 'indexNum', type: 'number' },
   'index num': { key: 'indexNum', type: 'number' },
   'homepass': { key: 'homepass', type: 'number' },
   'home pass': { key: 'homepass', type: 'number' },
+  'hp': { key: 'homepass', type: 'number' },
   'odp': { key: 'odp', type: 'number' },
   'remarks tsa': { key: 'remarksTsa', type: 'string' },
   'remarkstsa': { key: 'remarksTsa', type: 'string' },
@@ -49,7 +59,7 @@ const BASE_FIELD_MAP: Record<string, { key: string; type: 'string' | 'number' }>
 const HEADER_KEYWORDS = ['no', 'provinsi', 'kabupaten', 'kecamatan', 'kelurahan', 'homepass', 'odp', 'category', 'index', 'remarks', 'klasifikasi', 'pic', 'desa', 'site'];
 
 function normalizeHeader(h: string): string {
-  return h.toString().trim().toLowerCase().replace(/[_\-]/g, ' ').replace(/\s+/g, ' ');
+  return h.toString().trim().toLowerCase().replace(/[_\-/()]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** Build a unique fingerprint for a row based on key identifying fields.
@@ -101,6 +111,9 @@ function autoDetectMapping(headers: string[]): {
   const customHeaders: string[] = [];
   const usedFields = new Set<string>();
 
+  // Only use exact matching — fuzzy substring matching is too dangerous.
+  // E.g. "ODP Owner" contains "odp", "Undetected Notes" contains "no",
+  // "Name" is contained in "site name" — all would map to WRONG base fields.
   for (const h of headers) {
     const norm = normalizeHeader(h);
     const match = BASE_FIELD_MAP[norm];
@@ -110,26 +123,7 @@ function autoDetectMapping(headers: string[]): {
     }
   }
 
-  for (const h of headers) {
-    if (baseMap[h]) continue;
-    const norm = normalizeHeader(h);
-    let bestMatch: string | null = null;
-    let bestLen = 0;
-    for (const [key, val] of Object.entries(BASE_FIELD_MAP)) {
-      if (usedFields.has(val.key)) continue;
-      if (norm.includes(key) || key.includes(norm)) {
-        if (key.length > bestLen) {
-          bestLen = key.length;
-          bestMatch = val.key;
-        }
-      }
-    }
-    if (bestMatch) {
-      baseMap[h] = bestMatch;
-      usedFields.add(bestMatch);
-    }
-  }
-
+  // All unmatched headers become custom columns
   for (const h of headers) {
     if (!baseMap[h]) {
       customHeaders.push(h);
