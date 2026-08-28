@@ -139,6 +139,11 @@ function autoDetectMapping(headers: string[]): {
   return { baseMap, customHeaders };
 }
 
+// Increase body size limit for file uploads (Next.js App Router)
+export const maxDuration = 120;
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
@@ -149,6 +154,11 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const mode = formData.get('mode') as string || 'replace';
+
+    // Validate file size before processing
+    if (file && file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: `File terlalu besar (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimal ${MAX_FILE_SIZE / 1024 / 1024} MB.` }, { status: 413 });
+    }
     const projectId = (formData.get('projectId') as string) || getProjectId(request.url);
 
     if (!file) {

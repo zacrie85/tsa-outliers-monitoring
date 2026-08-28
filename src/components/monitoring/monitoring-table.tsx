@@ -465,11 +465,30 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
       fd.append('mode', importMode);
       fd.append('projectId', useAppStore.getState().activeProjectId);
       const res = await fetch('/api/monitoring/import', { method: 'POST', body: fd });
-      const data = await res.json();
+      // Handle non-JSON responses (e.g. "Request Entity Too Large" HTML page)
+      let data: any;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        if (res.status === 413 || text.includes('Request Entity Too Large') || text.includes('Payload Too Large')) {
+          setImportError(`File terlalu besar (${(importFile.size / 1024 / 1024).toFixed(1)} MB). Maksimal 4 MB. Coba kurangi kolom/baris di Excel atau pecah menjadi beberapa file.`);
+          return;
+        }
+        data = { error: text.slice(0, 200) || `HTTP ${res.status}` };
+      }
       if (!res.ok) { setImportError(data.error); return; }
       setImportResult(data);
       fetchData();
-    } catch (err: any) { setImportError(err.message || 'Gagal import'); }
+    } catch (err: any) {
+      // Catch JSON parse errors
+      if (err.message && err.message.includes('is not valid JSON')) {
+        setImportError('File terlalu besar atau format tidak didukung. Coba kurangi ukuran file Excel (maks ~4 MB).');
+      } else {
+        setImportError(err.message || 'Gagal import');
+      }
+    }
     finally { setImporting(false); }
   };
 
@@ -586,7 +605,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                   <div className="flex flex-col items-center gap-2">
                     <FileUp className="w-8 h-8 text-[#ffb74d]" />
                     <p className="text-sm text-[#e0e0e0] font-medium">{importFile.name}</p>
-                    <p className="text-xs text-[#546e7a]">{(importFile.size / 1024).toFixed(1)} KB</p>
+                    <p className="text-xs text-[#546e7a]">{importFile.size > 1024 * 1024 ? (importFile.size / 1024 / 1024).toFixed(1) + ' MB' : (importFile.size / 1024).toFixed(1) + ' KB'}{importFile.size > 4 * 1024 * 1024 ? ' — <span className="text-[#ef5350]">File terlalu besar! Maks 4 MB</span>' : ''}</p>
                     <button onClick={(e) => { e.stopPropagation(); setImportFile(null); }} className="text-xs text-[#ef5350] hover:text-[#ff8a80]">Ganti file</button>
                   </div>
                 ) : (
