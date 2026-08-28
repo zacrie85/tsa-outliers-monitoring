@@ -60,6 +60,7 @@ interface CustomColumn {
 
 export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const user = useAppStore((s) => s.user);
+  const activeProject = useAppStore((s) => s.projects.find(p => p.id === s.activeProjectId));
   const [rows, setRows] = useState<MonitoringRow[]>([]);
   const [customCols, setCustomCols] = useState<CustomColumn[]>([]);
   const [divisions, setDivisions] = useState<any[]>([]);
@@ -419,10 +420,62 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     });
   }, [rows, showAllBaseColumns]);
 
-  const getAllColumns = () => [
-    ...visibleBaseColumns.map(c => ({ key: c.key, label: c.label })),
-    ...customCols.map(c => ({ key: c.name, label: c.label })),
-  ];
+  // Parse columnOrder from project (saved during import to preserve original Excel order)
+  const columnOrderKeys: string[] = useMemo(() => {
+    try {
+      const raw = activeProject?.columnOrder;
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }, [activeProject?.columnOrder]);
+
+  const getAllColumns = useCallback(() => {
+    // Build lookup maps for quick access
+    const baseColMap = new Map(BASE_COLUMNS.map(c => [c.key, c]));
+    const customColMap = new Map(customCols.map(c => [c.name, c]));
+    const visibleBaseSet = new Set(visibleBaseColumns.map(c => c.key));
+
+    // If we have a saved column order from import, use it
+    if (columnOrderKeys.length > 0) {
+      const ordered: { key: string; label: string; width?: number; editable?: boolean }[] = [];
+      const seen = new Set<string>();
+      for (const key of columnOrderKeys) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (baseColMap.has(key)) {
+          // Only include base columns that have data (or show all if toggled)
+          if (showAllBaseColumns || visibleBaseSet.has(key)) {
+            const bc = baseColMap.get(key)!;
+            ordered.push({ key: bc.key, label: bc.label, width: bc.width, editable: bc.editable });
+          }
+        } else if (customColMap.has(key)) {
+          const cc = customColMap.get(key)!;
+          ordered.push({ key: cc.name, label: cc.label, width: 150, editable: false });
+        }
+      }
+      // Append any columns not in the saved order (e.g. manually added later)
+      for (const c of visibleBaseColumns) {
+        if (!seen.has(c.key)) {
+          ordered.push({ key: c.key, label: c.label, width: c.width, editable: c.editable });
+          seen.add(c.key);
+        }
+      }
+      for (const c of customCols) {
+        if (!seen.has(c.name)) {
+          ordered.push({ key: c.name, label: c.label, width: 150, editable: false });
+          seen.add(c.name);
+        }
+      }
+      return ordered;
+    }
+
+    // Fallback: no saved order — show base columns first, then custom
+    return [
+      ...visibleBaseColumns.map(c => ({ key: c.key, label: c.label, width: c.width, editable: c.editable })),
+      ...customCols.map(c => ({ key: c.name, label: c.label, width: 150, editable: false })),
+    ];
+  }, [visibleBaseColumns, customCols, columnOrderKeys, showAllBaseColumns]);
 
   const parseCoord = (val: string): { lat: number; lng: number } | null => {
     const cleaned = val.replace(/[()\s]/g, '');
@@ -959,44 +1012,25 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           <table className="aero-table">
             <thead>
               <tr>
-                {visibleBaseColumns.map(col => {
-                  const hasFilter = columnFilters[col.key] !== undefined;
-                  const sortDir = sortConfig?.key === col.key ? sortConfig.direction : null;
-                  return (
-                    <th key={col.key} style={{ minWidth: col.width }} className="relative group">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => openFilter(col.key)} className="flex items-center gap-1 hover:text-white transition-colors">
-                          {sortDir === 'asc' && <ArrowUp className="w-3 h-3 text-[#64b5f6]" />}
-                          {sortDir === 'desc' && <ArrowDown className="w-3 h-3 text-[#64b5f6]" />}
-                          {!sortDir && hasFilter && <Filter className="w-3 h-3 text-[#ffb74d]" />}
-                          {!sortDir && !hasFilter && <ChevronsUpDown className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />}
-                          {col.label}
-                        </button>
-                        {col.editable && user?.role !== 'ADMIN' && (<span className="w-1.5 h-1.5 rounded-full bg-[#81c784]" title="Bisa diedit" />)}
-                        <button onClick={() => openFilter(col.key)} className={'p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all ' + (hasFilter ? '!opacity-100' : '')}>
-                          <ChevronDown className="w-3 h-3 text-[#78909c]" />
-                        </button>
-                      </div>
-                      <FilterDropdown colKey={col.key} colLabel={col.label} />
-                    </th>
-                  );
-                })}
-                {customCols.map(col => {
-                  const colKey = col.name;
+                {getAllColumns().map(col => {
+                  const isBase = BASE_COLUMNS.some(bc => bc.key === col.key);
+                  const customCol = isBase ? null : customCols.find(c => c.name === col.key);
+                  const colKey = col.key;
                   const hasFilter = columnFilters[colKey] !== undefined;
                   const sortDir = sortConfig?.key === colKey ? sortConfig.direction : null;
                   return (
-                    <th key={col.id} style={{ minWidth: 150 }} className="relative group">
-                      <div className="flex items-center gap-1.5">
-                        <button onClick={() => openFilter(colKey)} className="flex items-center gap-1.5 hover:text-white transition-colors">
-                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: getDivisionColor(col.divisionId) }} />
+                    <th key={colKey} style={{ minWidth: col.width || 150 }} className="relative group">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openFilter(colKey)} className="flex items-center gap-1 hover:text-white transition-colors">
+                          {!isBase && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: getDivisionColor(customCol?.divisionId || null) }} />}
                           {sortDir === 'asc' && <ArrowUp className="w-3 h-3 text-[#64b5f6]" />}
                           {sortDir === 'desc' && <ArrowDown className="w-3 h-3 text-[#64b5f6]" />}
                           {!sortDir && hasFilter && <Filter className="w-3 h-3 text-[#ffb74d]" />}
                           {!sortDir && !hasFilter && <ChevronsUpDown className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />}
                           {col.label}
                         </button>
-                        {col.isLocked && <Lock className="w-3 h-3 text-[#ef9a9a]" />}
+                        {isBase && col.editable && user?.role !== 'ADMIN' && (<span className="w-1.5 h-1.5 rounded-full bg-[#81c784]" title="Bisa diedit" />)}
+                        {!isBase && customCol?.isLocked && <Lock className="w-3 h-3 text-[#ef9a9a]" />}
                         <button onClick={() => openFilter(colKey)} className={'p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all ' + (hasFilter ? '!opacity-100' : '')}>
                           <ChevronDown className="w-3 h-3 text-[#78909c]" />
                         </button>
@@ -1011,45 +1045,25 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
             <tbody>
               {displayRows.map((row) => (
                 <tr key={row.id}>
-                  {visibleBaseColumns.map(col => {
-                    const val = getCellValue(row, col.key);
-                    const canEdit = canEditCell(col.key, null);
-                    const isEditing = editingCell?.rowId === row.id && editingCell?.colKey === col.key;
-                    return (
-                      <td key={col.key}>
-                        {isEditing ? (
-                          <textarea ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={() => handleCellSave(row.id, col.key, editValue)}
-                            onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleCellSave(row.id, col.key, editValue); } }}
-                            className="w-full px-2 py-1 glass-input rounded text-xs resize-y" rows={2}
-                            style={{ minWidth: col.width - 24, minHeight: 40 }} />
-                        ) : (
-                          <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '')}
-                            onClick={() => { if (canEdit) { setEditingCell({ rowId: row.id, colKey: col.key }); setEditValue(val); } }}
-                            title={val}>
-                            {val ? val.split('\n').map((line, i) => <span key={i}>{line}{i < val.split('\n').length - 1 && <br />}</span>) : <span className="text-[#37474f]">-</span>}
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                  {customCols.map(col => {
-                    const colKey = col.name;
+                  {getAllColumns().map(col => {
+                    const isBase = BASE_COLUMNS.some(bc => bc.key === col.key);
+                    const customCol = isBase ? null : customCols.find(c => c.name === col.key);
+                    const colKey = col.key;
                     const val = getCellValue(row, colKey);
-                    const canEdit = canEditCell(colKey, col);
+                    const canEdit = canEditCell(colKey, customCol);
                     const isEditing = editingCell?.rowId === row.id && editingCell?.colKey === colKey;
                     return (
-                      <td key={col.id}>
+                      <td key={colKey}>
                         {isEditing ? (
                           <textarea ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
                             onBlur={() => handleCellSave(row.id, colKey, editValue)}
                             onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleCellSave(row.id, colKey, editValue); } }}
                             className="w-full px-2 py-1 glass-input rounded text-xs resize-y" rows={2}
-                            style={{ minHeight: 40 }} />
+                            style={{ minWidth: (col.width || 150) - 24, minHeight: 40 }} />
                         ) : (
-                          <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '') + (col.isLocked ? ' locked-cell' : '')}
+                          <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '') + (!isBase && customCol?.isLocked ? ' locked-cell' : '')}
                             onClick={() => { if (!canEdit) return; setEditingCell({ rowId: row.id, colKey }); setEditValue(val); }}
-                            title={col.isLocked ? 'Kolom terkunci' : val}>
+                            title={!isBase && customCol?.isLocked ? 'Kolom terkunci' : val}>
                             {val ? val.split('\n').map((line, i) => <span key={i}>{line}{i < val.split('\n').length - 1 && <br />}</span>) : <span className="text-[#37474f]">-</span>}
                           </div>
                         )}

@@ -270,6 +270,35 @@ export async function POST(request: NextRequest) {
       customColMap[h] = existing.name;
     }
 
+    // --- Save original Excel column order to Project.columnOrder ---
+    // Build ordered list of ALL column keys (base + custom) in the original Excel order
+    const columnOrder: string[] = [];
+    for (const h of fileHeaders) {
+      if (baseMap[h]) {
+        columnOrder.push(baseMap[h]); // base field key
+      } else if (customColMap[h]) {
+        columnOrder.push(customColMap[h]); // custom column name
+      }
+      // Skip columns that were filtered out (empty names, etc.)
+    }
+    if (projectId && projectId !== 'default') {
+      await db.project.update({
+        where: { id: projectId },
+        data: { columnOrder: JSON.stringify(columnOrder) },
+      });
+    } else {
+      // For default project, also save column order
+      await db.project.upsert({
+        where: { id: 'default' },
+        update: { columnOrder: JSON.stringify(columnOrder) },
+        create: {
+          id: 'default',
+          name: 'Default Project',
+          columnOrder: JSON.stringify(columnOrder),
+        },
+      });
+    }
+
     let startOrder = 1;
     if (mode === 'append') {
       const maxOrder = await db.monitoringRow.findFirst({ where: { projectId }, orderBy: { orderNum: 'desc' }, select: { orderNum: true } });

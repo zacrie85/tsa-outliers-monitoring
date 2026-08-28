@@ -14,6 +14,7 @@ export interface ProjectInfo {
   name: string;
   description: string | null;
   color: string;
+  columnOrder: string;
   _count?: { rows: number; columns: number };
 }
 
