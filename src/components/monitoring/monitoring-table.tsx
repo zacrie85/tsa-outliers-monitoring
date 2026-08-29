@@ -1,14 +1,15 @@
 'use client';
 import { apiFetch } from '@/lib/api';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { useAppStore } from '@/store/app-store';
 import {
   Plus, Trash2, Search, Lock, Unlock, Settings,
-  Download, X, Save, FileSpreadsheet, MapPin, ChevronDown, ChevronRight,
+  Download, X, Save, FileSpreadsheet, MapPin, ChevronDown,
   Filter, ArrowUp, ArrowDown, Check, ChevronsUpDown, Upload, FileUp, Loader2, AlertCircle, Eraser, TriangleAlert, Pencil
 } from 'lucide-react';
 import { FormBuilder } from '@/components/forms/form-builder';
+import { TableVirtuoso } from 'react-virtuoso';
 
 // No more hardcoded base columns — all columns come from Excel imports as custom columns.
 
@@ -56,8 +57,6 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
   const editRef = useRef<HTMLTextAreaElement>(null);
-  const tableBodyRef = useRef<HTMLDivElement>(null);
-  const [scrollInfo, setScrollInfo] = useState({ top: false, bottom: true, left: false, right: true });
   const filterDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close filter dropdown on outside click
@@ -91,6 +90,19 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   }, []);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
+
+  // ═══ PERFORMANCE: Cache parsed customData — avoid 200k+ JSON.parse calls ═══
+  const parsedCache = useMemo(() => {
+    const cache = new Map<string, Record<string, string>>();
+    for (const row of rows) {
+      try { cache.set(row.id, JSON.parse(row.customData || '{}')); }
+      catch { cache.set(row.id, {}); }
+    }
+    return cache;
+  }, [rows]);
+
+  // ═══ PERFORMANCE: Deferred search — don't block UI on every keystroke ═══
+  const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
     if (editingCell && editRef.current) {
@@ -223,13 +235,20 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     } catch (err) { console.error(err); }
   };
 
-  const getCellValue = (row: MonitoringRow, colKey: string) => {
-    try {
-      const customData = JSON.parse(row.customData || '{}');
-      if (colKey in customData) return String(customData[colKey]);
-    } catch {}
-    return '';
-  };
+  const getCellValue = useCallback((row: MonitoringRow, colKey: string) => {
+    const data = parsedCache.get(row.id);
+    if (!data) return '';
+    const v = data[colKey];
+    return v !== undefined ? String(v) : '';
+  }, [parsedCache]);
+
+  // Fast lookup by rowId (for virtual scroll itemContent)
+  const getCellValueById = useCallback((rowId: string, colKey: string) => {
+    const data = parsedCache.get(rowId);
+    if (!data) return '';
+    const v = data[colKey];
+    return v !== undefined ? String(v) : '';
+  }, [parsedCache]);
 
   const getDivisionColor = (divId: string | null) => {
     if (!divId) return '#90a4ae';
@@ -287,51 +306,47 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     setTempFilterValues(prev => prev.length === allVals.length ? [] : [...allVals]);
   };
 
-  // Search filter
+  // Search filter (uses deferredSearch for non-blocking UI)
   const searchedRows = useMemo(() => {
-    if (!search) return rows;
-    const s = search.toLowerCase();
+    if (!deferredSearch) return rows;
+    const s = deferredSearch.toLowerCase();
     return rows.filter(row =>
       (row.customData || '').toLowerCase().includes(s)
     );
-  }, [rows, search]);
+  }, [rows, deferredSearch]);
 
-  // Column filters
+  // Column filters (uses parsedCache for fast lookup)
   const filteredRows = useMemo(() => {
     let result = searchedRows;
     for (const [colKey, allowedVals] of Object.entries(columnFilters)) {
-      result = result.filter(row => allowedVals.includes(getCellValue(row, colKey)));
+      const allowed = new Set(allowedVals);
+      result = result.filter(row => {
+        const data = parsedCache.get(row.id);
+        return data ? allowed.has(data[colKey] ?? '') : false;
+      });
     }
     return result;
-  }, [searchedRows, columnFilters]);
+  }, [searchedRows, columnFilters, parsedCache]);
 
-  // Sort
+  // Sort (uses parsedCache for fast lookup)
   const displayRows = useMemo(() => {
     if (!sortConfig) return filteredRows;
     const sorted = [...filteredRows];
+    const key = sortConfig.key;
+    const dir = sortConfig.direction;
     sorted.sort((a, b) => {
-      const va = getCellValue(a, sortConfig.key);
-      const vb = getCellValue(b, sortConfig.key);
+      const va = parsedCache.get(a.id)?.[key] ?? '';
+      const vb = parsedCache.get(b.id)?.[key] ?? '';
       const na = parseFloat(va); const nb = parseFloat(vb);
-      if (!isNaN(na) && !isNaN(nb)) return sortConfig.direction === 'asc' ? na - nb : nb - na;
-      return sortConfig.direction === 'asc'
+      if (!isNaN(na) && !isNaN(nb)) return dir === 'asc' ? na - nb : nb - na;
+      return dir === 'asc'
         ? va.localeCompare(vb, undefined, { numeric: true, sensitivity: 'base' })
         : vb.localeCompare(va, undefined, { numeric: true, sensitivity: 'base' });
     });
     return sorted;
-  }, [filteredRows, sortConfig]);
+  }, [filteredRows, sortConfig, parsedCache]);
 
   const activeFilterCount = Object.keys(columnFilters).length;
-
-  const updateScrollInfo = () => {
-    const el = tableBodyRef.current;
-    if (!el) return;
-    const { scrollTop, scrollHeight, clientHeight, scrollLeft, scrollWidth, clientWidth } = el;
-    setScrollInfo({
-      top: scrollTop > 5, bottom: scrollTop + clientHeight < scrollHeight - 5,
-      left: scrollLeft > 5, right: scrollLeft + clientWidth < scrollWidth - 5,
-    });
-  };
 
   const exportCSV = () => {
     const allCols = getAllColumns();
@@ -1000,97 +1015,88 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
         </div>
       )}
 
-      {/* Data Table */}
-      <div className="glass-card rounded-xl flex-1 flex flex-col overflow-hidden min-h-0 relative">
-        {scrollInfo.top && (
-          <div className="absolute top-11 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-            <div className="flex flex-col items-center gap-0.5 opacity-40 animate-pulse">
-              <ChevronDown className="w-4 h-4 text-[#64b5f6] rotate-180" />
-              <span className="text-[9px] text-[#64b5f6]">scroll atas</span>
-            </div>
-          </div>
-        )}
-        {scrollInfo.left && (
-          <div className="absolute top-1/2 left-2 -translate-y-1/2 z-10 pointer-events-none">
-            <div className="flex flex-col items-center gap-0.5 opacity-40 animate-pulse">
-              <ChevronRight className="w-4 h-4 text-[#64b5f6] rotate-180" />
-              <span className="text-[9px] text-[#64b5f6]" style={{writingMode:'vertical-lr'}}>scroll</span>
-            </div>
-          </div>
-        )}
-        <div ref={tableBodyRef} onScroll={updateScrollInfo}
-          className="overflow-auto aero-scroll"
-          style={{ maxHeight: 'calc(20 * 2.4rem + 2.6rem)' }}>
-          <table className="aero-table">
-            <thead>
-              <tr>
-                {getAllColumns().map(col => {
-                  const colKey = col.key;
-                  const customCol = customCols.find(c => c.name === colKey);
-                  const hasFilter = columnFilters[colKey] !== undefined;
-                  const sortDir = sortConfig?.key === colKey ? sortConfig.direction : null;
-                  return (
-                    <th key={colKey} style={{ minWidth: col.width || 150 }} className="relative group">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => openFilter(colKey)} className="flex items-center gap-1 hover:text-white transition-colors">
-                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: getDivisionColor(customCol?.divisionId || null) }} />
-                          {sortDir === 'asc' && <ArrowUp className="w-3 h-3 text-[#64b5f6]" />}
-                          {sortDir === 'desc' && <ArrowDown className="w-3 h-3 text-[#64b5f6]" />}
-                          {!sortDir && hasFilter && <Filter className="w-3 h-3 text-[#ffb74d]" />}
-                          {!sortDir && !hasFilter && <ChevronsUpDown className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />}
-                          {col.label}
-                        </button>
-                        {customCol?.isLocked && <Lock className="w-3 h-3 text-[#ef9a9a]" />}
-                        <button onClick={() => openFilter(colKey)} className={'p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all ' + (hasFilter ? '!opacity-100' : '')}>
-                          <ChevronDown className="w-3 h-3 text-[#78909c]" />
-                        </button>
-                      </div>
-                      <FilterDropdown colKey={colKey} colLabel={col.label} />
-                    </th>
-                  );
-                })}
-                {user?.role === 'ADMIN' && (<th style={{ minWidth: 50 }}>Aksi</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {displayRows.map((row) => (
-                <tr key={row.id}>
-                  {getAllColumns().map(col => {
-                    const colKey = col.key;
-                    const customCol = customCols.find(c => c.name === colKey) || null;
-                    const val = getCellValue(row, colKey);
-                    const canEdit = canEditCell(colKey, customCol);
-                    const isEditing = editingCell?.rowId === row.id && editingCell?.colKey === colKey;
-                    return (
-                      <td key={colKey}>
-                        {isEditing ? (
-                          <textarea ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={() => handleCellSave(row.id, colKey, editValue)}
-                            onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleCellSave(row.id, colKey, editValue); } }}
-                            className="w-full px-2 py-1 glass-input rounded text-xs resize-y" rows={2}
-                            style={{ minWidth: (col.width || 150) - 24, minHeight: 40 }} />
-                        ) : (
-                          <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '') + (customCol?.isLocked ? ' locked-cell' : '')}
-                            onClick={() => { if (!canEdit) return; setEditingCell({ rowId: row.id, colKey }); setEditValue(val); }}
-                            title={customCol?.isLocked ? 'Kolom terkunci' : val}>
-                            {val ? val.split('\n').map((line, i) => <span key={i}>{line}{i < val.split('\n').length - 1 && <br />}</span>) : <span className="text-[#37474f]">-</span>}
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                  {user?.role === 'ADMIN' && (
-                    <td>
-                      <button onClick={() => handleDeleteRow(row.id)} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] transition-colors" title="Hapus baris">
-                        <Trash2 className="w-3.5 h-3.5" />
+      {/* ═══ Data Table — VIRTUAL SCROLLING for 30k+ rows ═══ */}
+      <div className="glass-card rounded-xl flex-1 flex flex-col overflow-hidden min-h-0">
+        <TableVirtuoso
+          data={displayRows}
+          style={{ flex: 1 }}
+          className="aero-scroll"
+          components={{
+            Table: ({ style, ...props }) => (
+              <table {...props} className="aero-table" style={style} />
+            ),
+            TableHead: ({ style, ...props }) => (
+              <thead {...props} className="sticky top-0 z-20" style={{ ...style, background: 'rgba(13, 27, 42, 0.98)', backdropFilter: 'blur(12px)' }} />
+            ),
+            TableBody: (props: any) => <tbody {...props} />,
+          }}
+          fixedHeaderContent={() => (
+            <tr>
+              {getAllColumns().map(col => {
+                const colKey = col.key;
+                const customCol = customCols.find(c => c.name === colKey);
+                const hasFilter = columnFilters[colKey] !== undefined;
+                const sortDir = sortConfig?.key === colKey ? sortConfig.direction : null;
+                return (
+                  <th key={colKey} style={{ minWidth: col.width || 150 }} className="relative group">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openFilter(colKey)} className="flex items-center gap-1 hover:text-white transition-colors">
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: getDivisionColor(customCol?.divisionId || null) }} />
+                        {sortDir === 'asc' && <ArrowUp className="w-3 h-3 text-[#64b5f6]" />}
+                        {sortDir === 'desc' && <ArrowDown className="w-3 h-3 text-[#64b5f6]" />}
+                        {!sortDir && hasFilter && <Filter className="w-3 h-3 text-[#ffb74d]" />}
+                        {!sortDir && !hasFilter && <ChevronsUpDown className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />}
+                        {col.label}
                       </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                      {customCol?.isLocked && <Lock className="w-3 h-3 text-[#ef9a9a]" />}
+                      <button onClick={() => openFilter(colKey)} className={'p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all ' + (hasFilter ? '!opacity-100' : '')}>
+                        <ChevronDown className="w-3 h-3 text-[#78909c]" />
+                      </button>
+                    </div>
+                    <FilterDropdown colKey={colKey} colLabel={col.label} />
+                  </th>
+                );
+              })}
+              {user?.role === 'ADMIN' && (<th style={{ minWidth: 50 }}>Aksi</th>)}
+            </tr>
+          )}
+          itemContent={(index, row) => {
+            const cols = getAllColumns();
+            return (<>
+              {cols.map(col => {
+                const colKey = col.key;
+                const customCol = customCols.find(c => c.name === colKey) || null;
+                const val = getCellValueById(row.id, colKey);
+                const canEdit = canEditCell(colKey, customCol);
+                const isEditing = editingCell?.rowId === row.id && editingCell?.colKey === colKey;
+                return (
+                  <td key={colKey}>
+                    {isEditing ? (
+                      <textarea ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={() => handleCellSave(row.id, colKey, editValue)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleCellSave(row.id, colKey, editValue); } }}
+                        className="w-full px-2 py-1 glass-input rounded text-xs resize-y" rows={2}
+                        style={{ minWidth: (col.width || 150) - 24, minHeight: 40 }} />
+                    ) : (
+                      <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '') + (customCol?.isLocked ? ' locked-cell' : '')}
+                        onClick={() => { if (!canEdit) return; setEditingCell({ rowId: row.id, colKey }); setEditValue(val); }}
+                        title={customCol?.isLocked ? 'Kolom terkunci' : val}>
+                        {val ? val.split('\n').map((line, i) => <span key={i}>{line}{i < val.split('\n').length - 1 && <br />}</span>) : <span className="text-[#37474f]">-</span>}
+                      </div>
+                    )}
+                  </td>
+                );
+              })}
+              {user?.role === 'ADMIN' && (
+                <td>
+                  <button onClick={() => handleDeleteRow(row.id)} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] transition-colors" title="Hapus baris">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              )}
+            </>);
+          }}
+        />
 
         {/* Info bar */}
         <div className="flex items-center justify-between p-3 border-t border-white/5">

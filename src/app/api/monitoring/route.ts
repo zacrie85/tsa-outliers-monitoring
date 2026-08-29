@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const rows = await db.monitoringRow.findMany({
       where: { projectId },
       orderBy: { orderNum: 'asc' },
+      select: { id: true, orderNum: true, customData: true },
     });
     return NextResponse.json({ rows });
   } catch (error: any) {
