@@ -283,16 +283,35 @@ function ExcelFilterDropdown({
         </button>
       </div>
 
-      {/* Dropdown panel */}
+      {/* Dropdown panel — opens upward to avoid being cut off */}
       {isOpen && (
         <div
-          className="absolute top-full left-0 right-0 z-50 mt-1 rounded-lg border overflow-hidden"
+          className="absolute bottom-full left-0 right-0 z-50 mb-1 rounded-lg border overflow-hidden"
           style={{
             background: '#1a1d29',
             borderColor: 'rgba(255,255,255,0.1)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+            boxShadow: '0 -8px 32px rgba(0,0,0,0.6)',
           }}
         >
+          {/* Footer with OK / Cancel — at the top since dropdown opens upward */}
+          <div className="flex items-center justify-end gap-2 px-3 py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <button
+              onClick={handleCancel}
+              className="px-3 py-1 rounded text-[10px] font-medium text-[#78909c] hover:text-white hover:bg-white/[0.06] transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApply}
+              className="px-3 py-1 rounded text-[10px] font-bold transition-all"
+              style={{ background: `${accentColor}25`, color: accentColor }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = `${accentColor}40`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = `${accentColor}25`; }}
+            >
+              OK
+            </button>
+          </div>
+
           {/* Search bar */}
           <div className="flex items-center gap-1.5 px-2.5 py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
             <Search className="w-3 h-3 text-[#546e7a] flex-shrink-0" />
@@ -351,25 +370,6 @@ function ExcelFilterDropdown({
                 );
               })
             )}
-          </div>
-
-          {/* Footer with OK / Cancel */}
-          <div className="flex items-center justify-end gap-2 px-3 py-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            <button
-              onClick={handleCancel}
-              className="px-3 py-1 rounded text-[10px] font-medium text-[#78909c] hover:text-white hover:bg-white/[0.06] transition-all"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleApply}
-              className="px-3 py-1 rounded text-[10px] font-bold transition-all"
-              style={{ background: `${accentColor}25`, color: accentColor }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = `${accentColor}40`; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = `${accentColor}25`; }}
-            >
-              OK
-            </button>
           </div>
         </div>
       )}
