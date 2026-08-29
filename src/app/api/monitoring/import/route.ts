@@ -3,20 +3,11 @@ import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { getProjectId } from '@/lib/project-context';
 
-const HEADER_KEYWORDS = ['no', 'nama', 'name', 'alamat', 'address', 'kabupaten', 'kecamatan', 'kelurahan', 'kode', 'code', 'status', 'date', 'tanggal', 'provinsi', 'region', 'city', 'location', 'district', 'description', 'notes', 'type', 'category', 'index', 'id'];
-
 function normalizeHeader(h: string): string {
   return h.toString().trim().toLowerCase().replace(/[_\-/()]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Build a unique fingerprint for a row based on customData. */
-function buildRowFingerprint(customData: string): string {
-  try {
-    const cd = JSON.parse(customData);
-    const sorted = Object.entries(cd).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`);
-    return sorted.join('|');
-  } catch { return customData; }
-}
+const HEADER_KEYWORDS = ['no', 'nama', 'name', 'alamat', 'address', 'kabupaten', 'kecamatan', 'kelurahan', 'kode', 'code', 'status', 'date', 'tanggal', 'provinsi', 'region', 'city', 'location', 'district', 'description', 'notes', 'type', 'category', 'index', 'id'];
 
 function findHeaderRow(allRows: any[][]): number {
   let bestRow = 0, bestScore = 0;
@@ -34,10 +25,16 @@ function findHeaderRow(allRows: any[][]): number {
   return bestRow;
 }
 
-// Increase body size limit for file uploads (Next.js App Router)
-export const maxDuration = 120;
+/** Build a unique fingerprint for a row based on customData. */
+function buildRowFingerprint(customData: string): string {
+  try {
+    const cd = JSON.parse(customData);
+    const sorted = Object.entries(cd).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`);
+    return sorted.join('|');
+  } catch { return customData; }
+}
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,91 +43,90 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Hanya admin yang bisa import data' }, { status: 403 });
     }
 
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const mode = formData.get('mode') as string || 'replace';
+    // ═══ Detect request format: JSON (client-parsed) or FormData (file upload) ═══
+    const contentType = request.headers.get('content-type') || '';
 
-    if (file && file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: `File terlalu besar (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimal ${MAX_FILE_SIZE / 1024 / 1024} MB.` }, { status: 413 });
-    }
-    const projectId = (formData.get('projectId') as string) || getProjectId(request.url);
-
-    if (!file) {
-      return NextResponse.json({ error: 'File tidak ditemukan' }, { status: 400 });
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
     let rows: Record<string, any>[] = [];
-    const fileName = file.name.toLowerCase();
+    let mode = 'replace';
+    let projectId = '';
+    let fileName = 'import.xlsx';
 
-    if (fileName.endsWith('.csv') || fileName.endsWith('.txt')) {
-      const text = buffer.toString('utf-8');
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      if (lines.length < 2) {
-        return NextResponse.json({ error: 'File CSV kosong atau hanya 1 baris' }, { status: 400 });
-      }
-
-      const firstLine = lines[0];
-      const commaCount = (firstLine.match(/,/g) || []).length;
-      const semiCount = (firstLine.match(/;/g) || []).length;
-      const tabCount = (firstLine.match(/\t/g) || []).length;
-      let sep = ',';
-      if (semiCount > commaCount && semiCount > tabCount) sep = ';';
-      else if (tabCount > commaCount) sep = '\t';
-
-      function parseCSVLine(line: string, separator: string): string[] {
-        const result: string[] = [];
-        let current = '';
-        let inQuotes = false;
-        for (let i = 0; i < line.length; i++) {
-          const ch = line[i];
-          if (inQuotes) {
-            if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
-            else if (ch === '"') { inQuotes = false; }
-            else { current += ch; }
-          } else {
-            if (ch === '"') { inQuotes = true; }
-            else if (ch === separator) { result.push(current.trim()); current = ''; }
-            else { current += ch; }
-          }
-        }
-        result.push(current.trim());
-        return result;
-      }
-
-      const csvRows: string[][] = lines.map(l => parseCSVLine(l, sep));
-      const headerLineIdx = findHeaderRow(csvRows);
-      const headers = parseCSVLine(lines[headerLineIdx], sep);
-      for (let i = headerLineIdx + 1; i < lines.length; i++) {
-        const vals = parseCSVLine(lines[i], sep);
-        if (vals.every(v => v === '')) continue;
-        const obj: Record<string, any> = {};
-        headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
-        rows.push(obj);
-      }
-    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-      const XLSX = await import('xlsx');
-      const wb = XLSX.read(buffer, { type: 'buffer' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const allRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-      const headerIdx = findHeaderRow(allRows);
-      const headers = allRows[headerIdx].map(h => String(h).trim());
-      for (let i = headerIdx + 1; i < allRows.length; i++) {
-        const vals = allRows[i];
-        if (!vals || vals.every(v => String(v).trim() === '')) continue;
-        const obj: Record<string, any> = {};
-        headers.forEach((h, idx) => { obj[h] = vals[idx] ?? ''; });
-        rows.push(obj);
-      }
+    if (contentType.includes('application/json')) {
+      // ─── Client-side parsed JSON (bypasses Vercel 4.5MB limit) ───
+      const body = await request.json();
+      rows = body.rows || [];
+      mode = body.mode || 'replace';
+      projectId = body.projectId || getProjectId(request.url);
+      fileName = body.fileName || 'import.xlsx';
     } else {
-      return NextResponse.json({ error: 'Format file tidak didukung. Gunakan .csv, .xlsx, atau .xls' }, { status: 400 });
+      // ─── Legacy FormData file upload (for small files < 4MB) ───
+      const formData = await request.formData();
+      const file = formData.get('file') as File;
+      mode = formData.get('mode') as string || 'replace';
+      projectId = (formData.get('projectId') as string) || getProjectId(request.url);
+      fileName = file?.name || 'import.xlsx';
+
+      if (!file) {
+        return NextResponse.json({ error: 'File tidak ditemukan' }, { status: 400 });
+      }
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const fileNameLower = fileName.toLowerCase();
+
+      if (fileNameLower.endsWith('.csv') || fileNameLower.endsWith('.txt')) {
+        const text = buffer.toString('utf-8');
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) { return NextResponse.json({ error: 'File CSV kosong atau hanya 1 baris' }, { status: 400 }); }
+        const firstLine = lines[0];
+        const commaCount = (firstLine.match(/,/g) || []).length;
+        const semiCount = (firstLine.match(/;/g) || []).length;
+        const tabCount = (firstLine.match(/\t/g) || []).length;
+        let sep = ',';
+        if (semiCount > commaCount && semiCount > tabCount) sep = ';';
+        else if (tabCount > commaCount) sep = '\t';
+        function parseCSVLine(line: string, separator: string): string[] {
+          const result: string[] = []; let current = ''; let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (inQuotes) { if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; } else if (ch === '"') { inQuotes = false; } else { current += ch; } }
+            else { if (ch === '"') { inQuotes = true; } else if (ch === separator) { result.push(current.trim()); current = ''; } else { current += ch; } }
+          }
+          result.push(current.trim()); return result;
+        }
+        const csvRows: string[][] = lines.map(l => parseCSVLine(l, sep));
+        const headerLineIdx = findHeaderRow(csvRows);
+        const headers = parseCSVLine(lines[headerLineIdx], sep);
+        for (let i = headerLineIdx + 1; i < lines.length; i++) {
+          const vals = parseCSVLine(lines[i], sep);
+          if (vals.every(v => v === '')) continue;
+          const obj: Record<string, any> = {};
+          headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
+          rows.push(obj);
+        }
+      } else if (fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls')) {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(buffer, { type: 'buffer' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const allRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        const headerIdx = findHeaderRow(allRows);
+        const headers = allRows[headerIdx].map(h => String(h).trim());
+        for (let i = headerIdx + 1; i < allRows.length; i++) {
+          const vals = allRows[i];
+          if (!vals || vals.every(v => String(v).trim() === '')) continue;
+          const obj: Record<string, any> = {};
+          headers.forEach((h, idx) => { obj[h] = vals[idx] ?? ''; });
+          rows.push(obj);
+        }
+      } else {
+        return NextResponse.json({ error: 'Format file tidak didukung. Gunakan .csv, .xlsx, atau .xls' }, { status: 400 });
+      }
     }
 
     if (rows.length === 0) {
       return NextResponse.json({ error: 'Tidak ada data ditemukan dalam file' }, { status: 400 });
     }
 
-    // ALL columns from Excel become custom columns (no base field mapping)
+    // ALL columns from data become custom columns (no base field mapping)
     const fileHeaders = Object.keys(rows[0]);
 
     if (mode === 'replace') {
@@ -167,7 +163,7 @@ export async function POST(request: NextRequest) {
       customColMap[h] = existing.name;
     }
 
-    // --- Save original Excel column order to Project.columnOrder ---
+    // --- Save original column order to Project.columnOrder ---
     const columnOrder: string[] = [];
     for (const h of fileHeaders) {
       if (customColMap[h]) {
@@ -193,7 +189,7 @@ export async function POST(request: NextRequest) {
       startOrder = (maxOrder?.orderNum || 0) + 1;
     }
 
-    // Build insert data — ALL values go into customData
+    // Build insert data
     const insertData: any[] = [];
     let skipped = 0;
     let orderIdx = 0;
@@ -204,13 +200,9 @@ export async function POST(request: NextRequest) {
         customData[colName] = String(row[srcHeader] ?? '').trim();
       }
 
-      // Dedup check in append mode
       if (mode === 'append') {
         const fp = buildRowFingerprint(JSON.stringify(customData));
-        if (existingFingerprints.has(fp)) {
-          skipped++;
-          continue;
-        }
+        if (existingFingerprints.has(fp)) { skipped++; continue; }
         existingFingerprints.add(fp);
       }
 
@@ -237,7 +229,7 @@ export async function POST(request: NextRequest) {
         action: 'IMPORT',
         tableName: 'MonitoringRow',
         newValue: JSON.stringify({
-          file: file.name,
+          file: fileName,
           mode,
           rows: inserted,
           skipped,

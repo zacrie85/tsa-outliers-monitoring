@@ -451,34 +451,85 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     setImportError('');
     setImportResult(null);
     try {
-      const fd = new FormData();
-      fd.append('file', importFile);
-      fd.append('mode', importMode);
-      fd.append('projectId', useAppStore.getState().activeProjectId);
-      const res = await fetch('/api/monitoring/import', { method: 'POST', body: fd });
-      // Handle non-JSON responses (e.g. "Request Entity Too Large" HTML page)
-      let data: any;
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        if (res.status === 413 || text.includes('Request Entity Too Large') || text.includes('Payload Too Large')) {
-          setImportError(`File terlalu besar (${(importFile.size / 1024 / 1024).toFixed(1)} MB). Maksimal 4 MB. Coba kurangi kolom/baris di Excel atau pecah menjadi beberapa file.`);
-          return;
+      const projectId = useAppStore.getState().activeProjectId;
+      const fileName = importFile.name;
+      const mode = importMode;
+
+      // ═══ Client-side file parsing (bypasses Vercel 4.5MB body limit) ═══
+      const buffer = await importFile.arrayBuffer();
+      const fileLower = fileName.toLowerCase();
+      let parsedRows: Record<string, any>[] = [];
+
+      if (fileLower.endsWith('.csv') || fileLower.endsWith('.txt')) {
+        // Parse CSV client-side
+        const text = new TextDecoder().decode(buffer);
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) { setImportError('File CSV kosong atau hanya 1 baris'); return; }
+        const firstLine = lines[0];
+        const commaCount = (firstLine.match(/,/g) || []).length;
+        const semiCount = (firstLine.match(/;/g) || []).length;
+        const tabCount = (firstLine.match(/\t/g) || []).length;
+        let sep = ',';
+        if (semiCount > commaCount && semiCount > tabCount) sep = ';';
+        else if (tabCount > commaCount) sep = '\t';
+        function parseCSVLine(line: string, separator: string): string[] {
+          const result: string[] = []; let current = ''; let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (inQuotes) { if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; } else if (ch === '"') { inQuotes = false; } else { current += ch; } }
+            else { if (ch === '"') { inQuotes = true; } else if (ch === separator) { result.push(current.trim()); current = ''; } else { current += ch; } }
+          }
+          result.push(current.trim()); return result;
         }
-        data = { error: text.slice(0, 200) || `HTTP ${res.status}` };
+        const csvRows: string[][] = lines.map(l => parseCSVLine(l, sep));
+        const headers = parseCSVLine(lines[0], sep);
+        for (let i = 1; i < lines.length; i++) {
+          const vals = parseCSVLine(lines[i], sep);
+          if (vals.every(v => v === '')) continue;
+          const obj: Record<string, any> = {};
+          headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
+          parsedRows.push(obj);
+        }
+      } else if (fileLower.endsWith('.xlsx') || fileLower.endsWith('.xls')) {
+        // Parse Excel client-side
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const allRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        if (allRows.length < 2) { setImportError('File Excel kosong atau hanya 1 baris'); return; }
+        const headers = allRows[0].map(h => String(h).trim());
+        for (let i = 1; i < allRows.length; i++) {
+          const vals = allRows[i];
+          if (!vals || vals.every(v => String(v).trim() === '')) continue;
+          const obj: Record<string, any> = {};
+          headers.forEach((h, idx) => { obj[h] = vals[idx] ?? ''; });
+          parsedRows.push(obj);
+        }
+      } else {
+        setImportError('Format file tidak didukung. Gunakan .csv, .xlsx, atau .xls');
+        return;
       }
+
+      if (parsedRows.length === 0) { setImportError('Tidak ada data ditemukan dalam file'); return; }
+
+      // Send parsed JSON data to server (much smaller than raw file)
+      const res = await fetch('/api/monitoring/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rows: parsedRows,
+          mode,
+          projectId,
+          fileName,
+        }),
+      });
+
+      const data = await res.json();
       if (!res.ok) { setImportError(data.error); return; }
       setImportResult(data);
       fetchData();
     } catch (err: any) {
-      // Catch JSON parse errors
-      if (err.message && err.message.includes('is not valid JSON')) {
-        setImportError('File terlalu besar atau format tidak didukung. Coba kurangi ukuran file Excel (maks ~4 MB).');
-      } else {
-        setImportError(err.message || 'Gagal import');
-      }
+      setImportError(err.message || 'Gagal import');
     }
     finally { setImporting(false); }
   };
@@ -596,7 +647,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                   <div className="flex flex-col items-center gap-2">
                     <FileUp className="w-8 h-8 text-[#ffb74d]" />
                     <p className="text-sm text-[#e0e0e0] font-medium">{importFile.name}</p>
-                    <p className="text-xs text-[#546e7a]">{importFile.size > 1024 * 1024 ? (importFile.size / 1024 / 1024).toFixed(1) + ' MB' : (importFile.size / 1024).toFixed(1) + ' KB'}{importFile.size > 4 * 1024 * 1024 ? ' — <span className="text-[#ef5350]">File terlalu besar! Maks 4 MB</span>' : ''}</p>
+                    <p className="text-xs text-[#546e7a]">{importFile.size > 1024 * 1024 ? (importFile.size / 1024 / 1024).toFixed(1) + ' MB' : (importFile.size / 1024).toFixed(1) + ' KB'}{importFile.size > 50 * 1024 * 1024 ? ' — <span className="text-[#90caf9]">File besar, proses import mungkin memakan waktu</span>' : ''}</p>
                     <button onClick={(e) => { e.stopPropagation(); setImportFile(null); }} className="text-xs text-[#ef5350] hover:text-[#ff8a80]">Ganti file</button>
                   </div>
                 ) : (
