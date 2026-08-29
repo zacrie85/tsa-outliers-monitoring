@@ -13,6 +13,10 @@ export default function Error({
     console.error('Page error:', error);
   }, [error]);
 
+  // Safely convert error properties to strings to prevent React #310
+  const message = typeof error?.message === 'string' ? error.message : 'An unexpected error occurred';
+  const stack = typeof error?.stack === 'string' ? error.stack : '';
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -30,18 +34,20 @@ export default function Error({
         border: '1px solid rgba(255,255,255,0.1)',
       }}>
         <h2 style={{ color: '#ef5350', marginBottom: 16 }}>Error</h2>
-        <p style={{ color: '#e0e0e0', fontSize: 14, marginBottom: 8 }}>{error.message}</p>
-        <pre style={{
-          color: '#78909c',
-          fontSize: 11,
-          background: '#0d1117',
-          padding: 12,
-          borderRadius: 8,
-          overflow: 'auto',
-          maxHeight: 200,
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
-        }}>{error.stack}</pre>
+        <p style={{ color: '#e0e0e0', fontSize: 14, marginBottom: 8 }}>{message}</p>
+        {stack && (
+          <pre style={{
+            color: '#78909c',
+            fontSize: 11,
+            background: '#0d1117',
+            padding: 12,
+            borderRadius: 8,
+            overflow: 'auto',
+            maxHeight: 200,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+          }}>{stack}</pre>
+        )}
         <button
           onClick={reset}
           style={{

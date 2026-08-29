@@ -3,7 +3,46 @@ import { apiFetch } from '@/lib/api';
 import { useAppStore } from '@/store/app-store';
 import { useProjectFields, FieldDef } from '@/hooks/use-project-fields';
 
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { Component, useState, useRef, useCallback, useEffect, useMemo, ReactNode } from 'react';
+
+/* ═══ React Error Boundary (class component) ═══ */
+class PivotErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[PivotErrorBoundary]', error, info.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-[#37474f]">
+          <div className="w-16 h-16 rounded-2xl bg-[#ef5350]/10 border border-[#ef5350]/20 flex items-center justify-center mb-4">
+            <span className="text-2xl">!</span>
+          </div>
+          <p className="text-sm font-medium text-[#ef5350] mb-1">Terjadi kesalahan pada Pivot</p>
+          <p className="text-[11px] text-[#546e7a] mb-4 max-w-md text-center">
+            {this.state.error?.message || 'Error tidak diketahui'}
+          </p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-4 py-2 rounded-lg text-xs font-medium bg-[#64b5f6]/15 text-[#64b5f6] hover:bg-[#64b5f6]/25 transition-all"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import {
   Download, Plus, X, BarChart3, LineChart as LineChartIcon, Filter, ChevronDown, ChevronRight,
   PieChart as PieChartIcon, AreaChart, Edit3, Check, Table2,
@@ -1037,30 +1076,36 @@ export function PivotCharts() {
       ]);
       const rowsData = await rowsRes.json();
       const colsData = await colsRes.json();
-      setRows(rowsData.rows);
-      setCustomCols(colsData.columns);
+      // Defensive: ensure rows is always an array of valid objects
+      const rawRows = Array.isArray(rowsData?.rows) ? rowsData.rows : [];
+      setRows(rawRows.filter((r: any) => r && typeof r === 'object' && r.id));
+      // Defensive: ensure columns is always an array
+      const rawCols = Array.isArray(colsData?.columns) ? colsData.columns : [];
+      setCustomCols(rawCols.filter((c: any) => c && typeof c === 'object'));
     } catch (err) { console.error(err); }
   }, []);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  const customColOptions = customCols.map((c: any) => ({ key: c.name || c.id, label: c.label }));
+  const customColOptions = customCols.map((c: any) => ({ key: String(c.name || c.id || ''), label: String(c.label || '') }));
 
   // Fetch dynamic field definitions for the active project
   const { fields: projectFields } = useProjectFields();
 
   // Build dynamic options from project fields
   const dynamicColOptions = useMemo(() => {
-    return projectFields.filter(f => !f.isNumeric).map(f => ({ key: f.key, label: f.label }));
+    return projectFields.filter(f => f && !f.isNumeric).map(f => ({ key: String(f.key), label: String(f.label) }));
   }, [projectFields]);
 
   const dynamicAggregations = useMemo(() => {
     if (projectFields.length > 0) {
-      const numeric = projectFields.filter(f => f.isNumeric);
+      const numeric = projectFields.filter(f => f && f.isNumeric);
       const aggs = [{ value: 'count', label: 'Jumlah (Count)' }];
       numeric.forEach(f => {
-        aggs.push({ value: `sum_${f.key}`, label: `Total ${f.label}` });
-        aggs.push({ value: `avg_${f.key}`, label: `Rata-rata ${f.label}` });
+        const k = String(f.key || '');
+        const l = String(f.label || '');
+        aggs.push({ value: `sum_${k}`, label: `Total ${l}` });
+        aggs.push({ value: `avg_${k}`, label: `Rata-rata ${l}` });
       });
       return aggs;
     }
@@ -1070,7 +1115,7 @@ export function PivotCharts() {
   const dynamicHierarchy = useMemo(() => {
     // Build hierarchy from project fields — no hardcoded geo keys
     if (projectFields.length > 0) {
-      return projectFields.map(f => ({ key: f.key, label: f.label }));
+      return projectFields.filter(f => f).map(f => ({ key: String(f.key || ''), label: String(f.label || '') }));
     }
     return [];
   }, [projectFields]);
@@ -1211,5 +1256,14 @@ export function PivotCharts() {
         )}
       </div>
     </div>
+  );
+}
+
+/* ═══ Wrapped export with Error Boundary ═══ */
+export default function PivotChartsWithErrorBoundary() {
+  return (
+    <PivotErrorBoundary>
+      <PivotCharts />
+    </PivotErrorBoundary>
   );
 }

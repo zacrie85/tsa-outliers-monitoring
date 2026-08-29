@@ -67,3 +67,6 @@ package-lock.json
 *.supabase-db-url
 tool-results/
 /supabase/
+
+# Old sub-repo (not part of this project)
+tsa-outliers-monitoring/

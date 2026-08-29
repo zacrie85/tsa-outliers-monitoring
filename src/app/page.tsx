@@ -7,7 +7,7 @@ import { MonitoringTable } from '@/components/monitoring/monitoring-table';
 import { AuditLog } from '@/components/monitoring/audit-log';
 import { AdminPanel } from '@/components/admin/admin-panel';
 import { SettingsPanel } from '@/components/settings-panel';
-import { PivotCharts } from '@/components/pivot/pivot-charts';
+import PivotCharts from '@/components/pivot/pivot-charts';
 import { ProjectSwitcher } from '@/components/project-switcher';
 import {
   Table2, History, Shield, LogOut, User, Settings, Eye, LayoutGrid,
