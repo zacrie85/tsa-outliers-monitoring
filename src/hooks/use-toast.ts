@@ -184,8 +184,10 @@ function useToast() {
     }
   }, [state])
 
+  const safeToasts = Array.isArray(state?.toasts) ? state.toasts : [];
   return {
     ...state,
+    toasts: safeToasts,
     toast,
     dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
   }

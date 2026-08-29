@@ -128,6 +128,8 @@ export function ProjectSwitcher() {
     } catch {}
   };
 
+  const safeProjects = Array.isArray(projects) ? projects : [];
+
   // Don't render until we've attempted setup at least once
   if (!setupDone) return null;
 
@@ -163,7 +165,7 @@ export function ProjectSwitcher() {
 
           {/* Project list */}
           <div className="max-h-[300px] overflow-y-auto aero-scroll py-1">
-            {projects.map(p => {
+            {safeProjects.map(p => {
               const isActive = p.id === activeProjectId;
               const isEditing = editingId === p.id;
 

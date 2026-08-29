@@ -1248,11 +1248,5 @@ export function PivotCharts() {
 
 /* ═══ Wrapped export with Error Catcher ═══ */
 export default function PivotChartsWithErrorBoundary() {
-  // DIAGNOSTIC: render minimal component to test if error is in PivotCharts
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-[#37474f]">
-      <p className="text-sm font-medium">Pivot Charts - Diagnostic Mode</p>
-      <p className="text-[10px] mt-1 text-[#546e7a]">Testing if error comes from PivotCharts children...</p>
-    </div>
-  );
+  return <PivotCharts />;
 }
