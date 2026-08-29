@@ -42,6 +42,12 @@ export default function HomePage() {
       .finally(() => setLoading(false));
   }, [setUser]);
 
+  // Safety: if activeTab is 'dashboard' (removed), redirect to monitoring
+  // MUST be before any conditional returns to avoid Rules of Hooks violation
+  useEffect(() => {
+    if ((activeTab as string) === 'dashboard') setActiveTab('monitoring');
+  }, [activeTab, setActiveTab]);
+
   const handleLogout = async () => {
     await fetch('/api/auth', { method: 'DELETE' });
     setUser(null);
@@ -61,11 +67,6 @@ export default function HomePage() {
   if (!user) {
     return <LoginForm />;
   }
-
-  // Safety: if activeTab is 'dashboard' (removed), redirect to monitoring
-  useEffect(() => {
-    if ((activeTab as string) === 'dashboard') setActiveTab('monitoring');
-  }, [activeTab, setActiveTab]);
 
   const isViewer = user.role === 'VIEWER';
   const activeProject = projects.find(p => p.id === activeProjectId);
