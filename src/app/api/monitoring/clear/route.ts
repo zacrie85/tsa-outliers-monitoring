@@ -14,11 +14,40 @@ export async function DELETE(request: NextRequest) {
     const rowCounts = await db.monitoringRow.count({ where: { projectId } });
     const colCounts = await db.customColumn.count({ where: { projectId } });
 
+    // Delete rows and custom columns in a transaction
     await db.$transaction([
       db.monitoringRow.deleteMany({ where: { projectId } }),
       db.customColumn.deleteMany({ where: { projectId } }),
-      db.project.update({ where: { id: projectId }, data: { columnOrder: '[]' } }),
     ]);
+
+    // Reset columnOrder — with fallback if column doesn't exist yet
+    try {
+      await db.project.update({
+        where: { id: projectId },
+        data: { columnOrder: '[]' },
+      });
+    } catch (e: any) {
+      // columnOrder column might not exist — try adding it via raw SQL
+      console.warn('columnOrder reset failed, attempting migration:', e.message);
+      try {
+        await db.$executeRawUnsafe(`
+          DO $$ BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'Project' AND column_name = 'columnOrder'
+            ) THEN
+              ALTER TABLE "Project" ADD COLUMN "columnOrder" TEXT NOT NULL DEFAULT '[]';
+            END IF;
+          END $$;
+        `);
+        await db.project.update({
+          where: { id: projectId },
+          data: { columnOrder: '[]' },
+        });
+      } catch (e2: any) {
+        console.warn('columnOrder migration also failed:', e2.message);
+      }
+    }
 
     await db.auditLog.create({
       data: {

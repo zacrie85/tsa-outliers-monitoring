@@ -37,14 +37,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nama proyek diperlukan' }, { status: 400 });
     }
 
-    const project = await db.project.create({
-      data: {
-        name: name.trim(),
-        description: description?.trim() || null,
-        color: color || '#66bb6a',
-      },
-    });
-
+    let project;
+    try {
+      project = await db.project.create({
+        data: {
+          name: name.trim(),
+          description: description?.trim() || null,
+          color: color || '#66bb6a',
+        },
+      });
+    } catch (createErr: any) {
+      // If columnOrder is missing, run migration and retry
+      if (createErr.message?.includes('columnOrder')) {
+        console.warn('Project create failed (missing column), running migration...');
+        try {
+          await db.$executeRawUnsafe(`
+            DO $$ BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'Project' AND column_name = 'columnOrder'
+              ) THEN
+                ALTER TABLE "Project" ADD COLUMN "columnOrder" TEXT NOT NULL DEFAULT '[]';
+              END IF;
+            END $$;
+          `);
+          project = await db.project.create({
+            data: {
+              name: name.trim(),
+              description: description?.trim() || null,
+              color: color || '#66bb6a',
+            },
+          });
+        } catch (retryErr: any) {
+          console.error('Project create retry failed:', retryErr);
+          return NextResponse.json({ error: 'Gagal membuat proyek: ' + retryErr.message }, { status: 500 });
+        }
+      } else {
+        throw createErr;
+      }
+    }
     try {
       await db.auditLog.create({
         data: {
