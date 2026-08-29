@@ -48,6 +48,8 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const [editColDivision, setEditColDivision] = useState('');
   const [showAddRow, setShowAddRow] = useState(false);
   const [newRow, setNewRow] = useState<any>({});
+  const [editingRow, setEditingRow] = useState<MonitoringRow | null>(null);
+  const [editRowData, setEditRowData] = useState<Record<string, string>>({});
 
   // Column filter & sort state
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
@@ -112,13 +114,15 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     }
   }, [editingCell]);
 
+  const canEditOrDelete = viewer ? false : (user?.role === 'ADMIN' || user?.role === 'EDITOR');
+
   const canEditCell = (colKey: string, col: CustomColumn | null) => {
     if (viewer) return false;
     if (user?.role === 'ADMIN') return true;
+    if (user?.role === 'EDITOR') return true;
     if (!col) return false;
     if (col.isLocked) return false;
-    if (!col.divisionId) return false;
-    return col.divisionId === user?.divisionId;
+    return false;
   };
 
   const handleCellSave = async (rowId: string, colKey: string, value: string) => {
@@ -231,6 +235,27 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     if (!confirm('Hapus baris ini?')) return;
     try {
       await apiFetch(`/api/monitoring/rows/${rowId}`, { method: 'DELETE' });
+      fetchData();
+    } catch (err) { console.error(err); }
+  };
+
+  const handleEditRow = (row: MonitoringRow) => {
+    const data = parsedCache.get(row.id) || {};
+    setEditRowData({ ...data });
+    setEditingRow(row);
+  };
+
+  const handleSaveEditRow = async () => {
+    if (!editingRow) return;
+    try {
+      const res = await apiFetch(`/api/monitoring/rows/${editingRow.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customData: JSON.stringify(editRowData) }),
+      });
+      if (!res.ok) { const data = await res.json(); alert(data.error || 'Gagal menyimpan'); return; }
+      setEditingRow(null);
+      setEditRowData({});
       fetchData();
     } catch (err) { console.error(err); }
   };
@@ -916,6 +941,9 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
               <FormBuilder customCols={customCols.map(c => ({ id: c.id, name: c.name, label: c.label }))} />
             </>
           )}
+          {!viewer && user?.role === 'EDITOR' && (
+            <button onClick={() => setShowAddRow(!showAddRow)} className="flex items-center gap-2 px-4 py-2.5 glass-btn-success rounded-lg text-sm"><Plus className="w-4 h-4" /> Tambah Baris</button>
+          )}
         </div>
       </div>
 
@@ -1058,7 +1086,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                   </th>
                 );
               })}
-              {user?.role === 'ADMIN' && (<th style={{ minWidth: 50 }}>Aksi</th>)}
+              {canEditOrDelete && (<th style={{ minWidth: 60 }}>Aksi</th>)}
             </tr>
           )}
           itemContent={(index, row) => {
@@ -1088,11 +1116,16 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                   </td>
                 );
               })}
-              {user?.role === 'ADMIN' && (
+              {canEditOrDelete && (
                 <td>
-                  <button onClick={() => handleDeleteRow(row.id)} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] transition-colors" title="Hapus baris">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-0.5">
+                    <button onClick={() => handleEditRow(row)} className="p-1.5 rounded-md hover:bg-[#64b5f6]/10 text-[#546e7a] hover:text-[#64b5f6] transition-colors" title="Edit baris">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleDeleteRow(row.id)} className="p-1.5 rounded-md hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] transition-colors" title="Hapus baris">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </td>
               )}
             </>);
@@ -1123,6 +1156,37 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           </div>
         </div>
       </div>
+
+      {/* Edit Row Modal */}
+      {editingRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setEditingRow(null)}>
+          <div className="glass-card rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><Pencil className="w-4 h-4 text-[#64b5f6]" /> Edit Baris #{editingRow.orderNum}</h3>
+              <button onClick={() => setEditingRow(null)} className="text-[#546e7a] hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto aero-scroll space-y-3 pr-1">
+              {customCols.map(col => (
+                <div key={col.name}>
+                  <label className="block text-xs text-[#78909c] mb-1">{col.label}</label>
+                  <input
+                    value={editRowData[col.name] || ''}
+                    onChange={(e) => setEditRowData(prev => ({ ...prev, [col.name]: e.target.value }))}
+                    className="w-full px-3 py-2 glass-input rounded-lg text-sm"
+                    placeholder={col.label}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-white/5">
+              <button onClick={() => setEditingRow(null)} className="px-4 py-2 rounded-lg text-xs text-[#78909c] hover:text-white hover:bg-white/5 transition-all">Batal</button>
+              <button onClick={handleSaveEditRow} className="px-4 py-2 rounded-lg text-xs font-bold transition-all" style={{ background: 'rgba(100,181,246,0.2)', color: '#64b5f6', border: '1px solid rgba(100,181,246,0.3)' }}>
+                Simpan Perubahan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

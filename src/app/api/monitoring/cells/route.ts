@@ -7,19 +7,14 @@ export async function PUT(request: NextRequest) {
     const user = await requireAuth();
     const { rowId, colKey, value, colLabel, isLocked, colDivisionId } = await request.json();
 
-    // Check if column is locked
-    if (isLocked) {
+    // Check if column is locked (only admin can edit locked columns)
+    if (isLocked && user.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Kolom ini dikunci oleh admin' }, { status: 403 });
     }
 
-    // Check division permissions for non-admin users
-    if (user.role !== 'ADMIN') {
-      if (colDivisionId && colDivisionId !== user.divisionId) {
-        return NextResponse.json({ error: 'Anda tidak memiliki akses ke kolom ini' }, { status: 403 });
-      }
-      if (!colDivisionId) {
-        return NextResponse.json({ error: 'Anda tidak bisa mengedit kolom ini' }, { status: 403 });
-      }
+    // VIEWER cannot edit
+    if (user.role === 'VIEWER') {
+      return NextResponse.json({ error: 'Viewer tidak bisa mengedit data' }, { status: 403 });
     }
 
     const row = await db.monitoringRow.findUnique({ where: { id: rowId } });

@@ -8,8 +8,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const body = await request.json();
 
-    if (user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Hanya admin yang bisa mengubah baris' }, { status: 403 });
+    if (user.role !== 'ADMIN' && user.role !== 'EDITOR') {
+      return NextResponse.json({ error: 'Hanya admin dan editor yang bisa mengubah baris' }, { status: 403 });
     }
 
     const existing = await db.monitoringRow.findUnique({ where: { id } });
@@ -47,8 +47,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth();
-    if (user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Hanya admin yang bisa menghapus baris' }, { status: 403 });
+    if (user.role !== 'ADMIN' && user.role !== 'EDITOR') {
+      return NextResponse.json({ error: 'Hanya admin dan editor yang bisa menghapus baris' }, { status: 403 });
     }
 
     const { id } = await params;

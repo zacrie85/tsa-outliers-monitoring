@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
-    if (user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Hanya admin yang bisa menambah baris' }, { status: 403 });
+    if (user.role !== 'ADMIN' && user.role !== 'EDITOR') {
+      return NextResponse.json({ error: 'Hanya admin dan editor yang bisa menambah baris' }, { status: 403 });
     }
     const body = await request.json();
     const projectId = getProjectId(request.url);
