@@ -107,3 +107,24 @@ Stage Summary:
 - Base columns and custom columns are interleaved correctly
 - Manually added columns (after import) append to the end
 - Toggle "Kolom Dasar: Otomatis/Semua" still works with new order
+---
+Task ID: 1
+Agent: main
+Task: Fix PIVOT page React error #310 crash + deployment issues
+
+Work Log:
+- Analyzed React error #310 (Objects not valid as React child) stack trace from deployed Vercel app
+- Discovered ghost git submodule: tsa-outliers-monitoring tracked as mode 160000 but no .gitmodules file exists
+- Added PivotErrorBoundary class component to gracefully catch and display pivot errors
+- Added defensive String() wrapping on all dynamic field values (key, label) in pivot-charts.tsx
+- Added defensive array validation in fetchData (filter valid objects)
+- Made error.tsx robust against non-string error.message/error.stack
+- Removed ghost submodule from git tracking with `git rm --cached`
+- Added tsa-outliers-monitoring/ to .gitignore
+- Switched page.tsx import to use default export (wrapped with error boundary)
+- Verified build succeeds, pushed commit ede8442 to origin/main
+
+Stage Summary:
+- Root cause: ghost submodule may have caused Vercel build inconsistency + potential object-as-React-child rendering
+- Produced artifacts: commit ede8442 pushed to GitHub, Vercel rebuild triggered
+- Key fixes: PivotErrorBoundary, defensive String() wrapping, ghost submodule removal
