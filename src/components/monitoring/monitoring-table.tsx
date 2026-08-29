@@ -461,7 +461,6 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
       let parsedRows: Record<string, any>[] = [];
 
       if (fileLower.endsWith('.csv') || fileLower.endsWith('.txt')) {
-        // Parse CSV client-side
         const text = new TextDecoder().decode(buffer);
         const lines = text.split(/\r?\n/).filter(l => l.trim());
         if (lines.length < 2) { setImportError('File CSV kosong atau hanya 1 baris'); return; }
@@ -481,7 +480,6 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           }
           result.push(current.trim()); return result;
         }
-        const csvRows: string[][] = lines.map(l => parseCSVLine(l, sep));
         const headers = parseCSVLine(lines[0], sep);
         for (let i = 1; i < lines.length; i++) {
           const vals = parseCSVLine(lines[i], sep);
@@ -491,7 +489,6 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           parsedRows.push(obj);
         }
       } else if (fileLower.endsWith('.xlsx') || fileLower.endsWith('.xls')) {
-        // Parse Excel client-side
         const XLSX = await import('xlsx');
         const wb = XLSX.read(buffer, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
@@ -512,21 +509,74 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
 
       if (parsedRows.length === 0) { setImportError('Tidak ada data ditemukan dalam file'); return; }
 
-      // Send parsed JSON data to server (much smaller than raw file)
-      const res = await fetch('/api/monitoring/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rows: parsedRows,
-          mode,
-          projectId,
-          fileName,
-        }),
-      });
+      // ═══ Chunked upload: split rows into chunks under 3.5MB each ═══
+      const CHUNK_MAX_BYTES = 3.5 * 1024 * 1024; // 3.5MB safe limit per chunk
+      const chunks: Record<string, any>[][] = [];
+      let currentChunk: Record<string, any>[] = [];
+      let currentSize = 0;
+      let chunkIndex = 0;
 
-      const data = await res.json();
-      if (!res.ok) { setImportError(data.error); return; }
-      setImportResult(data);
+      for (const row of parsedRows) {
+        const rowJson = JSON.stringify(row);
+        const rowSize = new Blob([rowJson]).size;
+
+        // If adding this row would exceed chunk limit, start new chunk
+        if (currentChunk.length > 0 && currentSize + rowSize > CHUNK_MAX_BYTES) {
+          chunks.push(currentChunk);
+          currentChunk = [];
+          currentSize = 0;
+        }
+        currentChunk.push(row);
+        currentSize += rowSize;
+      }
+      if (currentChunk.length > 0) chunks.push(currentChunk);
+
+      const totalChunks = chunks.length;
+      let totalInserted = 0;
+      let totalSkipped = 0;
+      let colMapping: Record<string, string> = {};
+      let totalColsCreated = 0;
+
+      for (let ci = 0; ci < chunks.length; ci++) {
+        const isLast = ci === chunks.length - 1;
+        const res = await fetch('/api/monitoring/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rows: chunks[ci],
+            mode: ci === 0 ? mode : 'append', // First chunk handles mode, rest always append
+            projectId,
+            fileName: `${fileName} (chunk ${ci + 1}/${totalChunks})`,
+            chunkIndex: ci,
+            totalChunks,
+          }),
+        });
+
+        const text = await res.text();
+        let data: any;
+        try { data = JSON.parse(text); } catch {
+          setImportError(`Server error: ${text.slice(0, 200)}`);
+          return;
+        }
+
+        if (!res.ok) { setImportError(data.error); return; }
+
+        totalInserted += data.inserted || 0;
+        totalSkipped += data.skipped || 0;
+        if (Object.keys(colMapping).length === 0) colMapping = data.mapping || {};
+        totalColsCreated = data.totalCustomColsCreated || 0;
+      }
+
+      setImportResult({
+        success: true,
+        inserted: totalInserted,
+        skipped: totalSkipped,
+        totalInFile: parsedRows.length,
+        mode,
+        mapping: colMapping,
+        totalCustomColsCreated: totalColsCreated,
+        chunks: totalChunks,
+      });
       fetchData();
     } catch (err: any) {
       setImportError(err.message || 'Gagal import');
