@@ -60,6 +60,9 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
 
   const editRef = useRef<HTMLTextAreaElement>(null);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
+  // Track which cell is currently being saved — prevents race condition
+  // where finishing an async save closes a DIFFERENT cell's editor
+  const savingCellRef = useRef<{ rowId: string; colKey: string } | null>(null);
 
   // Close filter dropdown on outside click
   useEffect(() => {
@@ -114,6 +117,29 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
     }
   }, [editingCell]);
 
+  // ═══ VIRTUAL SCROLL SAFETY: When react-virtuoso scrolls the editing
+  // row out of the viewport, it unmounts the textarea WITHOUT firing
+  // React's onBlur. Detect this by checking whether the textarea ref
+  // is still attached to the DOM. If not, flush the save immediately.
+  const editCheckInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (editingCell) {
+      // Poll every 200ms while editing — if textarea is unmounted by virtual scroll,
+      // the ref goes null and we save
+      editCheckInterval.current = setInterval(() => {
+        if (editingCell && editRef.current && !document.body.contains(editRef.current)) {
+          // Textarea was removed from DOM by virtual scroll — save immediately
+          handleCellSave(editingCell.rowId, editingCell.colKey, editValue);
+        }
+      }, 200);
+    } else {
+      if (editCheckInterval.current) { clearInterval(editCheckInterval.current); editCheckInterval.current = null; }
+    }
+    return () => { if (editCheckInterval.current) { clearInterval(editCheckInterval.current); editCheckInterval.current = null; } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingCell]);
+
   const canEditOrDelete = viewer ? false : (user?.role === 'ADMIN' || user?.role === 'EDITOR');
 
   const canEditCell = (colKey: string, col: CustomColumn | null) => {
@@ -126,6 +152,8 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   };
 
   const handleCellSave = async (rowId: string, colKey: string, value: string) => {
+    // Mark this cell as the one being saved (race-condition guard)
+    savingCellRef.current = { rowId, colKey };
     const col = customCols.find(c => c.name === colKey);
     try {
       const res = await fetch('/api/monitoring/cells', {
@@ -139,7 +167,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
           colDivisionId: col?.divisionId || null,
         }),
       });
-      if (!res.ok) { const data = await res.json(); alert(data.error); return; }
+      if (!res.ok) { const data = await res.json(); alert(data.error); savingCellRef.current = null; return; }
       setRows(prev => prev.map(r => {
         if (r.id !== rowId) return r;
         const cd = JSON.parse(r.customData || '{}');
@@ -147,7 +175,11 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
         return { ...r, customData: JSON.stringify(cd) };
       }));
     } catch (err) { console.error('Save error:', err); }
-    setEditingCell(null);
+    // Only clear editingCell if the user hasn't already moved to a different cell
+    if (savingCellRef.current?.rowId === rowId && savingCellRef.current?.colKey === colKey) {
+      setEditingCell(null);
+    }
+    savingCellRef.current = null;
   };
 
   const handleAddColumn = async () => {
@@ -234,9 +266,10 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   const handleDeleteRow = async (rowId: string) => {
     if (!confirm('Hapus baris ini?')) return;
     try {
-      await apiFetch(`/api/monitoring/rows/${rowId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/monitoring/rows/${rowId}`, { method: 'DELETE' });
+      if (!res.ok) { const data = await res.json(); alert(data.error || 'Gagal menghapus baris'); return; }
       fetchData();
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error('Delete error:', err); alert('Gagal menghapus baris'); }
   };
 
   const handleEditRow = (row: MonitoringRow) => {
@@ -1103,13 +1136,31 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
                     {isEditing ? (
                       <textarea ref={editRef} value={editValue} onChange={(e) => setEditValue(e.target.value)}
                         onBlur={() => handleCellSave(row.id, colKey, editValue)}
-                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleCellSave(row.id, colKey, editValue); } }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') { setEditingCell(null); return; }
+                          // Enter saves (like Excel). Shift+Enter for newline.
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleCellSave(row.id, colKey, editValue);
+                          }
+                          // Tab moves to next cell (save current first)
+                          if (e.key === 'Tab') {
+                            e.preventDefault();
+                            handleCellSave(row.id, colKey, editValue);
+                          }
+                        }}
                         className="w-full px-2 py-1 glass-input rounded text-xs resize-y" rows={2}
                         style={{ minWidth: (col.width || 150) - 24, minHeight: 40 }} />
                     ) : (
-                      <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : '') + (customCol?.isLocked ? ' locked-cell' : '')}
-                        onClick={() => { if (!canEdit) return; setEditingCell({ rowId: row.id, colKey }); setEditValue(val); }}
-                        title={customCol?.isLocked ? 'Kolom terkunci' : val}>
+                      <div className={'editable-cell text-xs ' + (!canEdit ? 'cursor-default' : 'cursor-text hover:bg-white/5') + (customCol?.isLocked ? ' locked-cell' : '')}
+                        onClick={() => {
+                          if (!canEdit) return;
+                          // If a save is in flight for another cell, let it finish — don't let it close this new editor
+                          savingCellRef.current = null;
+                          setEditingCell({ rowId: row.id, colKey });
+                          setEditValue(val);
+                        }}
+                        title={customCol?.isLocked ? 'Kolom terkunci' : (canEdit ? 'Klik untuk edit' : val)}>
                         {val ? val.split('\n').map((line, i) => <span key={i}>{line}{i < val.split('\n').length - 1 && <br />}</span>) : <span className="text-[#37474f]">-</span>}
                       </div>
                     )}
