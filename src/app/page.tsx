@@ -5,13 +5,12 @@ import { useAppStore } from '@/store/app-store';
 import { LoginForm } from '@/components/login-form';
 import { MonitoringTable } from '@/components/monitoring/monitoring-table';
 import { AuditLog } from '@/components/monitoring/audit-log';
-import { DashboardCharts } from '@/components/dashboard/dashboard-charts';
 import { AdminPanel } from '@/components/admin/admin-panel';
 import { SettingsPanel } from '@/components/settings-panel';
 import { PivotCharts } from '@/components/pivot/pivot-charts';
 import { ProjectSwitcher } from '@/components/project-switcher';
 import {
-  Table2, History, BarChart3, Shield, LogOut, User, Settings, Eye, LayoutGrid,
+  Table2, History, Shield, LogOut, User, Settings, Eye, LayoutGrid,
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -69,7 +68,6 @@ export default function HomePage() {
   const tabs = [
     { id: 'monitoring' as const, label: 'Monitoring', icon: Table2 },
     { id: 'logs' as const, label: 'Audit Log', icon: History },
-    { id: 'dashboard' as const, label: 'Dashboard', icon: BarChart3 },
     { id: 'pivot' as const, label: 'Pivot', icon: LayoutGrid },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
     ...(user.role === 'ADMIN' ? [{ id: 'admin' as const, label: 'Admin', icon: Shield }] : []),
@@ -162,7 +160,6 @@ export default function HomePage() {
         <main className="flex-1 p-4 max-w-[1920px] mx-auto w-full" style={{ minHeight: 'calc(100vh - 60px)' }}>
           {activeTab === 'monitoring' && <MonitoringTable key={refreshKey} viewer={isViewer} />}
           {activeTab === 'logs' && <AuditLog key={refreshKey} />}
-          {activeTab === 'dashboard' && <DashboardCharts key={refreshKey} />}
           {activeTab === 'pivot' && <PivotCharts key={refreshKey} />}
           {activeTab === 'settings' && <SettingsPanel key={refreshKey} />}
           {activeTab === 'admin' && <AdminPanel key={refreshKey} />}

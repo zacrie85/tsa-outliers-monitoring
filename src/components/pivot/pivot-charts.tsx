@@ -81,7 +81,7 @@ function createEmptyChart(index: number): PivotChart {
     title: `Pivot Chart ${index + 1}`,
     chartType: 'bar',
     paletteIndex: index % PALETTES.length,
-    groupCol: 'provinsi',
+    groupCol: '',
     aggMethod: 'count',
     data: [],
     edited: false,
@@ -1026,9 +1026,7 @@ export function PivotCharts() {
   const [rows, setRows] = useState<MonitoringRow[]>([]);
   const [customCols, setCustomCols] = useState<any[]>([]);
   const [pivotTables, setPivotTables] = useState<PivotTableConfig[]>([
-    { id: 'pt-1', title: 'Pivot Table 1 — Provinsi x Klasifikasi', rowField: 'provinsi', colField: 'klasifikasiTsa' },
-    { id: 'pt-2', title: 'Pivot Table 2 — Provinsi x PIC TSA', rowField: 'provinsi', colField: 'picTsa' },
-    { id: 'pt-3', title: 'Pivot Table 3 — Kabupaten x PIC TSA', rowField: 'kabupaten', colField: 'picTsa' },
+    { id: 'pt-1', title: 'Pivot Table 1', rowField: '', colField: '' },
   ]);
 
   const fetchData = useCallback(async () => {
@@ -1070,10 +1068,9 @@ export function PivotCharts() {
   }, [projectFields]);
 
   const dynamicHierarchy = useMemo(() => {
+    // Build hierarchy from project fields — no hardcoded geo keys
     if (projectFields.length > 0) {
-      const geoKeys = ['provinsi', 'kabupaten', 'kecamatan', 'kelurahan'];
-      const geo = projectFields.filter(f => geoKeys.includes(f.key));
-      if (geo.length > 0) return geo.map(f => ({ key: f.key, label: f.label }));
+      return projectFields.map(f => ({ key: f.key, label: f.label }));
     }
     return [];
   }, [projectFields]);
@@ -1125,8 +1122,8 @@ export function PivotCharts() {
       {
         id: `pt-${Date.now()}`,
         title: `Pivot Table ${prev.length + 1}`,
-        rowField: 'provinsi',
-        colField: 'picTsa',
+        rowField: '',
+        colField: '',
       },
     ]);
   };

@@ -21,7 +21,7 @@ export interface ProjectInfo {
 interface AppState {
   user: SessionUser | null;
   setUser: (user: SessionUser | null) => void;
-  activeTab: 'monitoring' | 'logs' | 'dashboard' | 'pivot' | 'admin' | 'settings';
+  activeTab: 'monitoring' | 'logs' | 'pivot' | 'admin' | 'settings';
   setActiveTab: (tab: AppState['activeTab']) => void;
   activeProjectId: string;
   setActiveProjectId: (id: string) => void;

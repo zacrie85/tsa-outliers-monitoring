@@ -17,6 +17,7 @@ export async function DELETE(request: NextRequest) {
     await db.$transaction([
       db.monitoringRow.deleteMany({ where: { projectId } }),
       db.customColumn.deleteMany({ where: { projectId } }),
+      db.project.update({ where: { id: projectId }, data: { columnOrder: '[]' } }),
     ]);
 
     await db.auditLog.create({
