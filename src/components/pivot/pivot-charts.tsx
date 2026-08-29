@@ -3,46 +3,8 @@ import { apiFetch } from '@/lib/api';
 import { useAppStore } from '@/store/app-store';
 import { useProjectFields, FieldDef } from '@/hooks/use-project-fields';
 
-import { Component, useState, useRef, useCallback, useEffect, useMemo, ReactNode } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 
-/* ═══ React Error Boundary (class component) ═══ */
-class PivotErrorBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[PivotErrorBoundary]', error, info.componentStack);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex flex-col items-center justify-center py-20 text-[#37474f]">
-          <div className="w-16 h-16 rounded-2xl bg-[#ef5350]/10 border border-[#ef5350]/20 flex items-center justify-center mb-4">
-            <span className="text-2xl">!</span>
-          </div>
-          <p className="text-sm font-medium text-[#ef5350] mb-1">Terjadi kesalahan pada Pivot</p>
-          <p className="text-[11px] text-[#546e7a] mb-4 max-w-md text-center">
-            {this.state.error?.message || 'Error tidak diketahui'}
-          </p>
-          <button
-            onClick={() => this.setState({ hasError: false, error: null })}
-            className="px-4 py-2 rounded-lg text-xs font-medium bg-[#64b5f6]/15 text-[#64b5f6] hover:bg-[#64b5f6]/25 transition-all"
-          >
-            Coba Lagi
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 import {
   Download, Plus, X, BarChart3, LineChart as LineChartIcon, Filter, ChevronDown, ChevronRight,
   PieChart as PieChartIcon, AreaChart, Edit3, Check, Table2,
@@ -160,7 +122,11 @@ function PivotCard({
   const palette = PALETTES[chart.paletteIndex] || PALETTES[0];
   const colors = palette.colors;
   const accentColor = colors[0];
-  const allColOptions = [...colOptions, ...customColOptions];
+  const safeColOptions = Array.isArray(colOptions) ? colOptions : [];
+  const safeCustomColOptions = Array.isArray(customColOptions) ? customColOptions : [];
+  const safeAggregations = Array.isArray(aggregations) ? aggregations : DEFAULT_AGGREGATIONS;
+  const safeHierarchy = Array.isArray(hierarchy) ? hierarchy : [];
+  const allColOptions = [...safeColOptions, ...safeCustomColOptions];
 
   const updateTitle = () => {
     if (titleDraft.trim()) onUpdate({ ...chart, title: titleDraft.trim() });
@@ -463,7 +429,7 @@ function PivotCard({
           {allColOptions.map(co => <option key={co.key} value={co.key} style={optStyle}>{co.label}</option>)}
         </select>
         <select value={chart.aggMethod} onChange={(e) => onUpdate({ ...chart, aggMethod: e.target.value, edited: false })} className={selectCls}>
-          {aggregations.map(ag => <option key={ag.value} value={ag.value} style={optStyle}>{ag.label}</option>)}
+          {safeAggregations.map(ag => <option key={ag.value} value={ag.value} style={optStyle}>{ag.label}</option>)}
         </select>
         {chart.edited && (
           <button onClick={autoGenerate} className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] text-[#4dd0e1] hover:bg-[#4dd0e1]/10 transition-all" title="Refresh dari data monitoring">
@@ -624,8 +590,9 @@ function PivotTableSection({ rows, allColOptions, defaultRowField = 'provinsi', 
   hierarchy?: { key: string; label: string }[];
   aggregations?: { value: string; label: string }[];
 }) {
-  const activeHierarchy = hierarchy || DEFAULT_HIERARCHY;
-  const activeAggregations = aggregations || DEFAULT_AGGREGATIONS;
+  const safeAllColOptions = Array.isArray(allColOptions) ? allColOptions : [];
+  const activeHierarchy = Array.isArray(hierarchy) ? hierarchy : DEFAULT_HIERARCHY;
+  const activeAggregations = Array.isArray(aggregations) ? aggregations : DEFAULT_AGGREGATIONS;
   const [rowField, setRowField] = useState(defaultRowField);
   const [colField, setColField] = useState(defaultColField);
   const [aggMethod, setAggMethod] = useState('count');
@@ -874,13 +841,13 @@ function PivotTableSection({ rows, allColOptions, defaultRowField = 'provinsi', 
           <div className="min-w-[160px]">
             <label className="block text-[10px] text-[#546e7a] mb-1">Row Labels (Baris)</label>
             <select value={rowField} onChange={(e) => setRowField(e.target.value)} className={selCls}>
-              {allColOptions.map(co => <option key={co.key} value={co.key} style={optStyle}>{co.label}</option>)}
+              {safeAllColOptions.map(co => <option key={co.key} value={co.key} style={optStyle}>{co.label}</option>)}
             </select>
           </div>
           <div className="min-w-[160px]">
             <label className="block text-[10px] text-[#546e7a] mb-1">Column Labels (Kolom)</label>
             <select value={colField} onChange={(e) => setColField(e.target.value)} className={selCls}>
-              {allColOptions.map(co => <option key={co.key} value={co.key} style={optStyle}>{co.label}</option>)}
+              {safeAllColOptions.map(co => <option key={co.key} value={co.key} style={optStyle}>{co.label}</option>)}
             </select>
           </div>
           <div className="min-w-[160px]">
@@ -1087,19 +1054,24 @@ export function PivotCharts() {
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  const customColOptions = customCols.map((c: any) => ({ key: String(c.name || c.id || ''), label: String(c.label || '') }));
+  // Defensive: ensure customCols is always a valid array before mapping
+  const safeCustomCols = Array.isArray(customCols) ? customCols : [];
+  const customColOptions = safeCustomCols.map((c: any) => ({ key: String(c.name || c.id || ''), label: String(c.label || '') }));
 
   // Fetch dynamic field definitions for the active project
   const { fields: projectFields } = useProjectFields();
 
+  // Defensive: ensure projectFields is always a valid array
+  const safeProjectFields = Array.isArray(projectFields) ? projectFields : [];
+
   // Build dynamic options from project fields
   const dynamicColOptions = useMemo(() => {
-    return projectFields.filter(f => f && !f.isNumeric).map(f => ({ key: String(f.key), label: String(f.label) }));
-  }, [projectFields]);
+    return safeProjectFields.filter(f => f && !f.isNumeric).map(f => ({ key: String(f.key), label: String(f.label) }));
+  }, [safeProjectFields]);
 
   const dynamicAggregations = useMemo(() => {
-    if (projectFields.length > 0) {
-      const numeric = projectFields.filter(f => f && f.isNumeric);
+    if (safeProjectFields.length > 0) {
+      const numeric = safeProjectFields.filter(f => f && f.isNumeric);
       const aggs = [{ value: 'count', label: 'Jumlah (Count)' }];
       numeric.forEach(f => {
         const k = String(f.key || '');
@@ -1110,17 +1082,20 @@ export function PivotCharts() {
       return aggs;
     }
     return DEFAULT_AGGREGATIONS;
-  }, [projectFields]);
+  }, [safeProjectFields]);
 
   const dynamicHierarchy = useMemo(() => {
     // Build hierarchy from project fields — no hardcoded geo keys
-    if (projectFields.length > 0) {
-      return projectFields.filter(f => f).map(f => ({ key: String(f.key || ''), label: String(f.label || '') }));
+    if (safeProjectFields.length > 0) {
+      return safeProjectFields.filter(f => f).map(f => ({ key: String(f.key || ''), label: String(f.label || '') }));
     }
     return [];
-  }, [projectFields]);
+  }, [safeProjectFields]);
 
-  const allColOptions = [...dynamicColOptions, ...customColOptions];
+  const safeDynamicColOptions = Array.isArray(dynamicColOptions) ? dynamicColOptions : [];
+  const safeDynamicAggregations = Array.isArray(dynamicAggregations) ? dynamicAggregations : DEFAULT_AGGREGATIONS;
+  const safeDynamicHierarchy = Array.isArray(dynamicHierarchy) ? dynamicHierarchy : [];
+  const allColOptions = [...safeDynamicColOptions, ...customColOptions];
 
   const updateChart = useCallback((index: number, chart: PivotChart) => {
     setCharts(prev => prev.map((c, i) => i === index ? chart : c));
@@ -1226,7 +1201,7 @@ export function PivotCharts() {
               defaultRowField={pt.rowField} defaultColField={pt.colField}
               tableTitle={pt.title}
               accentFrom={accent.from} accentTo={accent.to} iconColor={accent.icon}
-              hierarchy={dynamicHierarchy} aggregations={dynamicAggregations}
+              hierarchy={safeDynamicHierarchy} aggregations={safeDynamicAggregations}
               onRemove={pivotTables.length > 1 ? () => removePivotTable(i) : undefined} />
           );
         })}
@@ -1250,7 +1225,7 @@ export function PivotCharts() {
             {charts.map((chart, i) => (
               <PivotCard key={chart.id} chart={chart} index={i} rows={rows}
                 customColOptions={customColOptions} onUpdate={(c) => updateChart(i, c)} onRemove={() => removeChart(i)}
-                colOptions={dynamicColOptions} aggregations={dynamicAggregations} hierarchy={dynamicHierarchy} />
+                colOptions={safeDynamicColOptions} aggregations={safeDynamicAggregations} hierarchy={safeDynamicHierarchy} />
             ))}
           </div>
         )}
@@ -1259,11 +1234,7 @@ export function PivotCharts() {
   );
 }
 
-/* ═══ Wrapped export with Error Boundary ═══ */
+/* ═══ Wrapped export with Error Catcher ═══ */
 export default function PivotChartsWithErrorBoundary() {
-  return (
-    <PivotErrorBoundary>
-      <PivotCharts />
-    </PivotErrorBoundary>
-  );
+  return <PivotCharts />;
 }
