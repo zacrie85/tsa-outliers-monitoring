@@ -4,7 +4,8 @@ import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'rea
 import {
   X, Filter, Search, GripVertical, Sigma, ArrowUpDown,
   TableProperties, LayoutGrid, Download, FileSpreadsheet, Image as ImageIcon,
-  ChevronDown, ChevronRight, Plus, RotateCcw, PanelRightOpen, PanelRightClose,
+  ChevronDown, ChevronRight, ChevronUp, Plus, RotateCcw, PanelRightOpen, PanelRightClose,
+  Check, CheckSquare, Square, MinusSquare,
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════
@@ -156,6 +157,225 @@ function DropZone({ icon: Icon, label, accentColor, children, onDrop, isEmpty }:
 // Fallback color for safety (outside component to avoid recreation)
 const FALLBACK_COLOR = { bg: 'transparent', border: 'rgba(255,255,255,0.1)', text: '#e0e0e0', dot: '#e0e0e0' };
 const FALLBACK_META = { groupIndex: -1, groupLabel: '', isGroupStart: false, color: FALLBACK_COLOR };
+
+/* ═══════════════════════════════════════════════════
+   Excel-Style Filter Dropdown Component
+   ═══════════════════════════════════════════════════ */
+function ExcelFilterDropdown({
+  fieldKey,
+  fieldLabel,
+  options,
+  selected,
+  onApply,
+  onRemove,
+  accentColor,
+}: {
+  fieldKey: string;
+  fieldLabel: string;
+  options: string[];
+  selected: string[];
+  onApply: (key: string, values: string[]) => void;
+  onRemove: () => void;
+  accentColor: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [tempSelected, setTempSelected] = useState<string[]>(selected);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Sync tempSelected when selected prop changes (e.g. reset from outside)
+  useEffect(() => { setTempSelected(selected); }, [selected]);
+
+  // Focus search when opening
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
+  }, [isOpen]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        handleCancel();
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen, tempSelected]);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchText) return options;
+    const q = searchText.toLowerCase();
+    return options.filter(o => o.toLowerCase().includes(q));
+  }, [options, searchText]);
+
+  const allSelected = filteredOptions.length > 0 && filteredOptions.every(o => tempSelected.includes(o));
+  const someSelected = filteredOptions.some(o => tempSelected.includes(o)) && !allSelected;
+
+  const toggleAll = () => {
+    if (allSelected) {
+      // Deselect all filtered options
+      const filteredSet = new Set(filteredOptions);
+      setTempSelected(prev => prev.filter(v => !filteredSet.has(v)));
+    } else {
+      // Select all filtered options (add missing ones)
+      const currentSet = new Set(tempSelected);
+      filteredOptions.forEach(o => currentSet.add(o));
+      setTempSelected([...currentSet]);
+    }
+  };
+
+  const toggleItem = (opt: string) => {
+    setTempSelected(prev =>
+      prev.includes(opt) ? prev.filter(v => v !== opt) : [...prev, opt]
+    );
+  };
+
+  const handleApply = () => {
+    onApply(fieldKey, tempSelected);
+    setIsOpen(false);
+    setSearchText('');
+  };
+
+  const handleCancel = () => {
+    setTempSelected(selected);
+    setIsOpen(false);
+    setSearchText('');
+  };
+
+  return (
+    <div className="w-full relative" ref={dropdownRef}>
+      {/* Chip button that toggles the dropdown */}
+      <div
+        className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium border cursor-pointer transition-all"
+        style={{
+          background: `${accentColor}15`,
+          borderColor: `${accentColor}30`,
+          color: accentColor,
+        }}
+        onClick={() => { if (!isOpen) setIsOpen(true); }}
+      >
+        <GripVertical className="w-2.5 h-2.5 opacity-30" />
+        <span className="flex-1 truncate">{fieldLabel}</span>
+        {selected.length > 0 && (
+          <span className="text-[8px] px-1 py-0.5 rounded-full font-bold" style={{ background: `${accentColor}25`, color: accentColor }}>
+            {selected.length}
+          </span>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="p-0.5 rounded hover:bg-[#ef5350]/20 transition-all"
+          style={{ color: '#546e7a' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = '#ef5350')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = '#546e7a')}
+        >
+          <X className="w-2.5 h-2.5" />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+          className="p-0.5 rounded hover:bg-white/10 transition-all"
+        >
+          {isOpen ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+        </button>
+      </div>
+
+      {/* Dropdown panel */}
+      {isOpen && (
+        <div
+          className="absolute top-full left-0 right-0 z-50 mt-1 rounded-lg border overflow-hidden"
+          style={{
+            background: '#1a1d29',
+            borderColor: 'rgba(255,255,255,0.1)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          }}
+        >
+          {/* Search bar */}
+          <div className="flex items-center gap-1.5 px-2.5 py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <Search className="w-3 h-3 text-[#546e7a] flex-shrink-0" />
+            <input
+              ref={searchInputRef}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search..."
+              className="flex-1 bg-transparent text-[10px] text-[#e0e0e0] placeholder:text-[#37474f] focus:outline-none"
+            />
+            {searchText && (
+              <button onClick={() => setSearchText('')} className="text-[#37474f] hover:text-white">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
+          </div>
+
+          {/* (Select All) row */}
+          <div
+            className="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-white/[0.04] transition-colors border-b"
+            style={{ borderColor: 'rgba(255,255,255,0.04)' }}
+            onClick={toggleAll}
+          >
+            {allSelected ? (
+              <CheckSquare className="w-3 h-3 flex-shrink-0" style={{ color: accentColor }} />
+            ) : someSelected ? (
+              <MinusSquare className="w-3 h-3 flex-shrink-0" style={{ color: accentColor }} />
+            ) : (
+              <Square className="w-3 h-3 flex-shrink-0 text-[#546e7a]" />
+            )}
+            <span className="text-[10px] font-medium text-[#78909c]">(Select All)</span>
+          </div>
+
+          {/* Checkbox list */}
+          <div ref={listRef} className="max-h-[200px] overflow-y-auto aero-scroll">
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-4 text-center text-[10px] text-[#37474f] italic">
+                Tidak ada data ditemukan
+              </div>
+            ) : (
+              filteredOptions.map(opt => {
+                const isChecked = tempSelected.includes(opt);
+                return (
+                  <div
+                    key={opt}
+                    className="flex items-center gap-2 px-2.5 py-1 cursor-pointer hover:bg-white/[0.04] transition-colors"
+                    onClick={() => toggleItem(opt)}
+                  >
+                    {isChecked ? (
+                      <CheckSquare className="w-3 h-3 flex-shrink-0" style={{ color: accentColor }} />
+                    ) : (
+                      <Square className="w-3 h-3 flex-shrink-0 text-[#546e7a]" />
+                    )}
+                    <span className={`text-[10px] truncate ${isChecked ? 'text-[#e0e0e0]' : 'text-[#78909c]'}`}>{opt || '(blank)'}</span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer with OK / Cancel */}
+          <div className="flex items-center justify-end gap-2 px-3 py-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <button
+              onClick={handleCancel}
+              className="px-3 py-1 rounded text-[10px] font-medium text-[#78909c] hover:text-white hover:bg-white/[0.06] transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApply}
+              className="px-3 py-1 rounded text-[10px] font-bold transition-all"
+              style={{ background: `${accentColor}25`, color: accentColor }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = `${accentColor}40`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = `${accentColor}25`; }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════════════
    Main Component
@@ -798,33 +1018,16 @@ export function ExcelPivotTable({ rows, customCols, instanceId = 'ep-default', f
                   const opts = getFilterOptions(fk);
                   const selected = activeFilters[fk] || [];
                   return (
-                    <div key={fk} className="w-full">
-                      <ZoneChip label={fieldMap[fk]?.label || fk}
-                        onRemove={() => removeFieldFromZone(fk, 'filters')}
-                        onMove={(z) => moveFieldToZone(fk, z)}
-                        showMoveMenu={contextChip === `filter-${fk}`}
-                        setShowMoveMenu={(v) => setContextChip(v ? `filter-${fk}` : null)}
-                        accentColor="#ffb74d" />
-                      <div className="mt-1 ml-1">
-                        <select
-                          multiple value={selected}
-                          onChange={(e) => {
-                            const vals = [...e.target.selectedOptions].map(o => o.value);
-                            setActiveFilters(p => ({ ...p, [fk]: vals }));
-                          }}
-                          className="w-full h-[60px] text-[10px] bg-white/[0.03] border border-white/[0.06] rounded-md text-[#e0e0e0] focus:outline-none focus:border-white/[0.12] aero-scroll"
-                          style={{ background: '#1a1d29' }}
-                        >
-                          {opts.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                        {selected.length > 0 && (
-                          <div className="flex items-center justify-between mt-0.5">
-                            <span className="text-[9px] text-[#ffb74d]">{selected.length} terpilih</span>
-                            <button onClick={() => setActiveFilters(p => ({ ...p, [fk]: [] }))} className="text-[9px] text-[#37474f] hover:text-[#ef5350]">Reset</button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <ExcelFilterDropdown
+                      key={fk}
+                      fieldKey={fk}
+                      fieldLabel={fieldMap[fk]?.label || fk}
+                      options={opts}
+                      selected={selected}
+                      onApply={(key, values) => setActiveFilters(p => ({ ...p, [key]: values }))}
+                      onRemove={() => removeFieldFromZone(fk, 'filters')}
+                      accentColor="#ffb74d"
+                    />
                   );
                 })}
               </DropZone>
