@@ -1026,14 +1026,26 @@ interface PivotTableConfig {
 }
 
 export function PivotCharts() {
-  const [charts, setCharts] = useState<PivotChart[]>(() =>
+  // Keep all hooks at the top (Rules of Hooks)
+  const [charts] = useState<PivotChart[]>(() =>
     Array.from({ length: 8 }, (_, i) => createEmptyChart(i))
   );
-  const [rows, setRows] = useState<MonitoringRow[]>([]);
-  const [customCols, setCustomCols] = useState<any[]>([]);
-  const [pivotTables, setPivotTables] = useState<PivotTableConfig[]>([
+  const [rows] = useState<MonitoringRow[]>([]);
+  const [customCols] = useState<any[]>([]);
+  const [pivotTables] = useState<PivotTableConfig[]>([
     { id: 'pt-1', title: 'Pivot Table 1', rowField: '', colField: '' },
   ]);
+
+  // TEMPORARY DIAGNOSTIC: minimal render to isolate error source
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-[#37474f]">
+      <p className="text-sm">Pivot Charts - Diagnostic Mode</p>
+      <p className="text-[10px] mt-1">charts={charts.length} rows={rows.length} cols={customCols.length} pivotTables={pivotTables.length}</p>
+    </div>
+  );
+
+  /* ═══ ORIGINAL CODE (temporarily unreachable — will cause lint warning) ═══ */
+  void 0;
 
   const fetchData = useCallback(async () => {
     try {
@@ -1236,5 +1248,11 @@ export function PivotCharts() {
 
 /* ═══ Wrapped export with Error Catcher ═══ */
 export default function PivotChartsWithErrorBoundary() {
-  return <PivotCharts />;
+  // DIAGNOSTIC: render minimal component to test if error is in PivotCharts
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-[#37474f]">
+      <p className="text-sm font-medium">Pivot Charts - Diagnostic Mode</p>
+      <p className="text-[10px] mt-1 text-[#546e7a]">Testing if error comes from PivotCharts children...</p>
+    </div>
+  );
 }
