@@ -1026,219 +1026,162 @@ interface PivotTableConfig {
 }
 
 export function PivotCharts() {
-  // Keep all hooks at the top (Rules of Hooks)
-  const [charts] = useState<PivotChart[]>(() =>
-    Array.from({ length: 8 }, (_, i) => createEmptyChart(i))
-  );
-  const [rows] = useState<MonitoringRow[]>([]);
-  const [customCols] = useState<any[]>([]);
-  const [pivotTables] = useState<PivotTableConfig[]>([
-    { id: 'pt-1', title: 'Pivot Table 1', rowField: '', colField: '' },
-  ]);
+  const { projects, activeProjectId } = useAppStore();
+  const safeProjects = Array.isArray(projects) ? projects : [];
 
-  // TEMPORARY DIAGNOSTIC: minimal render to isolate error source
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-[#37474f]">
-      <p className="text-sm">Pivot Charts - Diagnostic Mode</p>
-      <p className="text-[10px] mt-1">charts={charts.length} rows={rows.length} cols={customCols.length} pivotTables={pivotTables.length}</p>
-    </div>
-  );
-
-  /* ═══ ORIGINAL CODE (temporarily unreachable — will cause lint warning) ═══ */
-  void 0;
-
-  const fetchData = useCallback(async () => {
-    try {
-      const [rowsRes, colsRes] = await Promise.all([
-        apiFetch('/api/monitoring'),
-        apiFetch('/api/columns'),
-      ]);
-      const rowsData = await rowsRes.json();
-      const colsData = await colsRes.json();
-      // Defensive: ensure rows is always an array of valid objects
-      const rawRows = Array.isArray(rowsData?.rows) ? rowsData.rows : [];
-      setRows(rawRows.filter((r: any) => r && typeof r === 'object' && r.id));
-      // Defensive: ensure columns is always an array
-      const rawCols = Array.isArray(colsData?.columns) ? colsData.columns : [];
-      setCustomCols(rawCols.filter((c: any) => c && typeof c === 'object'));
-    } catch (err) { console.error(err); }
-  }, []);
-
-  useEffect(() => { void fetchData(); }, [fetchData]);
-
-  // Defensive: ensure customCols is always a valid array before mapping
-  const safeCustomCols = Array.isArray(customCols) ? customCols : [];
-  const customColOptions = safeCustomCols.map((c: any) => ({ key: String(c.name || c.id || ''), label: String(c.label || '') }));
-
-  // Fetch dynamic field definitions for the active project
-  const { fields: projectFields } = useProjectFields();
-
-  // Defensive: ensure projectFields is always a valid array
-  const safeProjectFields = Array.isArray(projectFields) ? projectFields : [];
-
-  // Build dynamic options from project fields
-  const dynamicColOptions = useMemo(() => {
-    return safeProjectFields.filter(f => f && !f.isNumeric).map(f => ({ key: String(f.key), label: String(f.label) }));
-  }, [safeProjectFields]);
-
-  const dynamicAggregations = useMemo(() => {
-    if (safeProjectFields.length > 0) {
-      const numeric = safeProjectFields.filter(f => f && f.isNumeric);
-      const aggs = [{ value: 'count', label: 'Jumlah (Count)' }];
-      numeric.forEach(f => {
-        const k = String(f.key || '');
-        const l = String(f.label || '');
-        aggs.push({ value: `sum_${k}`, label: `Total ${l}` });
-        aggs.push({ value: `avg_${k}`, label: `Rata-rata ${l}` });
-      });
-      return aggs;
-    }
-    return DEFAULT_AGGREGATIONS;
-  }, [safeProjectFields]);
-
-  const dynamicHierarchy = useMemo(() => {
-    // Build hierarchy from project fields — no hardcoded geo keys
-    if (safeProjectFields.length > 0) {
-      return safeProjectFields.filter(f => f).map(f => ({ key: String(f.key || ''), label: String(f.label || '') }));
-    }
-    return [];
-  }, [safeProjectFields]);
-
-  const safeDynamicColOptions = Array.isArray(dynamicColOptions) ? dynamicColOptions : [];
-  const safeDynamicAggregations = Array.isArray(dynamicAggregations) ? dynamicAggregations : DEFAULT_AGGREGATIONS;
-  const safeDynamicHierarchy = Array.isArray(dynamicHierarchy) ? dynamicHierarchy : [];
-  const allColOptions = [...safeDynamicColOptions, ...customColOptions];
-
-  const updateChart = useCallback((index: number, chart: PivotChart) => {
-    setCharts(prev => prev.map((c, i) => i === index ? chart : c));
-  }, []);
-
-  const removeChart = (index: number) => {
-    setCharts(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const addChart = () => {
-    setCharts(prev => [...prev, createEmptyChart(prev.length)]);
-  };
-
-  const activeProjectId = useAppStore(s => s.activeProjectId);
-
-  /* ── Excel-Style Pivot Table instances (per-project) ── */
-  const EXCEL_PIVOT_KEY = `pivot-excel-instances-${activeProjectId}`;
-  const [excelPivotIds, setExcelPivotIds] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const saved = localStorage.getItem(`pivot-excel-instances-${activeProjectId}`);
-      if (saved) { const parsed = JSON.parse(saved); if (Array.isArray(parsed) && parsed.length > 0) return parsed; }
-    } catch {}
+  const [selectedProjectId, setSelectedProjectId] = useState(activeProjectId || 'default');
+  const [rows, setRows] = useState<MonitoringRow[]>([]);
+  const [customCols, setCustomCols] = useState<any[]>([]);
+  const [fields, setFields] = useState<FieldDef[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pivotIds, setPivotIds] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return ['ep-1'];
     return ['ep-1'];
   });
 
-  useEffect(() => {
-    try { localStorage.setItem(`pivot-excel-instances-${activeProjectId}`, JSON.stringify(excelPivotIds)); } catch {}
-  }, [excelPivotIds, activeProjectId]);
+  // Fetch data when selected project changes
+  const fetchData = useCallback(async (pid: string) => {
+    if (!pid) return;
+    setLoading(true);
+    try {
+      const [rowsRes, colsRes, fieldsRes] = await Promise.all([
+        fetch(`/api/monitoring?projectId=${pid}`).then(r => r.json()),
+        fetch(`/api/columns?projectId=${pid}`).then(r => r.json()),
+        fetch(`/api/columns/fields?projectId=${pid}`).then(r => r.json()),
+      ]);
+      const rawRows = Array.isArray(rowsRes?.rows) ? rowsRes.rows : [];
+      setRows(rawRows.filter((r: any) => r && typeof r === 'object' && r.id));
+      setCustomCols(Array.isArray(colsRes?.columns) ? colsRes.columns : []);
+      setFields(Array.isArray(fieldsRes?.fields) ? fieldsRes.fields : []);
+    } catch (err) {
+      console.error('Failed to fetch pivot data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const addExcelPivot = () => {
-    const newId = `ep-${Date.now()}`;
-    setExcelPivotIds(prev => [...prev, newId]);
+  // Initial fetch + refetch on project change
+  useEffect(() => { void fetchData(selectedProjectId); }, [selectedProjectId, fetchData]);
+
+  // Re-fetch on project switch from other tabs
+  useEffect(() => {
+    const handler = () => {
+      setSelectedProjectId(useAppStore.getState().activeProjectId || 'default');
+    };
+    window.addEventListener('project-switched', handler);
+    return () => window.removeEventListener('project-switched', handler);
+  }, []);
+
+  // Persist pivot IDs per project in localStorage
+  useEffect(() => {
+    try { localStorage.setItem(`pivot-ids-${selectedProjectId}`, JSON.stringify(pivotIds)); } catch {}
+  }, [pivotIds, selectedProjectId]);
+
+  // Load pivot IDs from localStorage on project change
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`pivot-ids-${selectedProjectId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) setPivotIds(parsed);
+      } else {
+        setPivotIds(['ep-1']);
+      }
+    } catch {
+      setPivotIds(['ep-1']);
+    }
+  }, [selectedProjectId]);
+
+  const addPivot = () => {
+    setPivotIds(prev => [...prev, `ep-${Date.now()}`]);
   };
 
-  const removeExcelPivot = (id: string) => {
-    setExcelPivotIds(prev => prev.filter(i => i !== id));
+  const removePivot = (id: string) => {
+    setPivotIds(prev => {
+      const next = prev.filter(i => i !== id);
+      if (next.length === 0) return ['ep-1'];
+      return next;
+    });
     try { localStorage.removeItem(`pivot-excel-${id}`); } catch {}
   };
 
-  const addPivotTable = () => {
-    setPivotTables(prev => [
-      ...prev,
-      {
-        id: `pt-${Date.now()}`,
-        title: `Pivot Table ${prev.length + 1}`,
-        rowField: '',
-        colField: '',
-      },
-    ]);
-  };
-
-  const removePivotTable = (index: number) => {
-    setPivotTables(prev => prev.filter((_, i) => i !== index));
-  };
+  const selectedProject = safeProjects.find(p => p.id === selectedProjectId);
+  const selCls = 'px-3 py-2 rounded-lg text-xs bg-white/[0.04] border border-white/[0.06] text-[#e0e0e0] focus:outline-none focus:border-white/[0.12] transition-all cursor-pointer';
+  const optStyle = { background: '#1a1a2e' };
 
   return (
     <div className="flex flex-col h-full gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#64b5f6]/20 to-[#42a5f5]/5 border border-[#64b5f6]/20 flex items-center justify-center">
-              <BarChart3 className="w-4 h-4 text-[#64b5f6]" />
-            </div>
-            Pivot Charts
-          </h2>
-          <p className="text-[11px] text-[#546e7a] mt-1 ml-10">Data otomatis dari monitoring — pilih kolom & agregasi, edit jika perlu, lalu download</p>
-        </div>
-        <button onClick={addChart}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-[#64b5f6]/20 to-[#42a5f5]/10 border border-[#64b5f6]/20 text-[#90caf9] hover:from-[#64b5f6]/30 hover:to-[#42a5f5]/20 hover:border-[#64b5f6]/30 transition-all">
-          <Plus className="w-4 h-4" /> Tambah Chart
-        </button>
-      </div>
-
-      {/* Excel-Style Pivot Tables */}
-      <div className="flex flex-col gap-4">
-        {excelPivotIds.map((id) => (
-          <div key={id} className="relative group">
-            <ExcelPivotTable instanceId={id} rows={rows} customCols={customCols} fields={projectFields} />
-            {excelPivotIds.length > 1 && (
-              <button
-                onClick={() => removeExcelPivot(id)}
-                className="absolute top-3 right-14 z-20 opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] border border-transparent hover:border-[#ef5350]/20 transition-all"
-                title="Hapus Pivot Table ini"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+      {/* Header with Project Selector */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#4dd0e1]/20 to-[#ba68c8]/10 border border-[#4dd0e1]/20 flex items-center justify-center">
+            <BarChart3 className="w-4 h-4 text-[#4dd0e1]" />
           </div>
-        ))}
-        <button onClick={addExcelPivot}
-          className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-white/[0.06] text-[#546e7a] hover:text-[#4dd0e1] hover:border-[#4dd0e1]/20 hover:bg-[#4dd0e1]/[0.02] transition-all text-xs font-medium">
-          <Plus className="w-4 h-4" /> Tambah Excel-Style Pivot Table
-        </button>
+          <div>
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              Pivot Table
+            </h2>
+            <p className="text-[11px] text-[#546e7a] mt-0.5">
+              {loading ? 'Memuat data...' : `${rows.length} baris \u00b7 ${fields.length} kolom`}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Project Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-[#546e7a] whitespace-nowrap">Project:</span>
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              className={selCls}
+              style={{ minWidth: 180 }}
+            >
+              {safeProjects.map(p => (
+                <option key={p.id} value={p.id} style={optStyle}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <button onClick={addPivot}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-[#4dd0e1]/20 to-[#ba68c8]/10 border border-[#4dd0e1]/20 text-[#4dd0e1] hover:from-[#4dd0e1]/30 hover:to-[#ba68c8]/20 hover:border-[#4dd0e1]/30 transition-all">
+            <Plus className="w-4 h-4" /> Tambah Pivot
+          </button>
+        </div>
       </div>
 
-      {/* Pivot Table Sections */}
-      <div className="flex flex-col gap-4">
-        {pivotTables.map((pt, i) => {
-          const accent = PIVOT_ACCENTS[i % PIVOT_ACCENTS.length];
-          return (
-            <PivotTableSection key={pt.id} rows={rows} allColOptions={allColOptions}
-              defaultRowField={pt.rowField} defaultColField={pt.colField}
-              tableTitle={pt.title}
-              accentFrom={accent.from} accentTo={accent.to} iconColor={accent.icon}
-              hierarchy={safeDynamicHierarchy} aggregations={safeDynamicAggregations}
-              onRemove={pivotTables.length > 1 ? () => removePivotTable(i) : undefined} />
-          );
-        })}
-        <button onClick={addPivotTable}
-          className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-white/[0.06] text-[#546e7a] hover:text-[#90caf9] hover:border-[#64b5f6]/20 hover:bg-[#64b5f6]/[0.02] transition-all text-xs font-medium">
-          <Plus className="w-4 h-4" /> Tambah Pivot Table
-        </button>
-      </div>
-
+      {/* Pivot Tables */}
       <div className="flex-1 overflow-y-auto aero-scroll pb-4">
-        {charts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-[#37474f]">
-            <div className="w-20 h-20 rounded-3xl bg-white/[0.02] border border-white/[0.04] flex items-center justify-center mb-4">
-              <BarChart3 className="w-10 h-10 opacity-20" />
-            </div>
-            <p className="text-sm font-medium">Tidak ada chart</p>
-            <p className="text-[11px] mt-1">Klik &quot;Tambah Chart&quot; untuk memulai</p>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 text-[#37474f]">
+            <div className="w-10 h-10 border-2 border-[#4dd0e1]/30 border-t-[#4dd0e1] rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-xs">Memuat data project{selectedProject ? `: ${selectedProject.name}` : ''}...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {charts.map((chart, i) => (
-              <PivotCard key={chart.id} chart={chart} index={i} rows={rows}
-                customColOptions={customColOptions} onUpdate={(c) => updateChart(i, c)} onRemove={() => removeChart(i)}
-                colOptions={safeDynamicColOptions} aggregations={safeDynamicAggregations} hierarchy={safeDynamicHierarchy} />
+          <div className="flex flex-col gap-4">
+            {pivotIds.map((id) => (
+              <div key={id} className="relative group">
+                <ExcelPivotTable
+                  instanceId={id}
+                  rows={rows}
+                  customCols={customCols}
+                  fields={fields}
+                />
+                {pivotIds.length > 1 && (
+                  <button
+                    onClick={() => removePivot(id)}
+                    className="absolute top-3 right-14 z-20 opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] border border-transparent hover:border-[#ef5350]/20 transition-all"
+                    title="Hapus Pivot Table ini"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             ))}
+            <button onClick={addPivot}
+              className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-white/[0.06] text-[#546e7a] hover:text-[#4dd0e1] hover:border-[#4dd0e1]/20 hover:bg-[#4dd0e1]/[0.02] transition-all text-xs font-medium">
+              <Plus className="w-4 h-4" /> Tambah Pivot Table
+            </button>
           </div>
         )}
       </div>
@@ -1246,7 +1189,7 @@ export function PivotCharts() {
   );
 }
 
-/* ═══ Wrapped export with Error Catcher ═══ */
+/* Wrapped export with Error Catcher */
 export default function PivotChartsWithErrorBoundary() {
   return <PivotCharts />;
 }
