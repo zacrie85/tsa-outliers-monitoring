@@ -153,6 +153,10 @@ function DropZone({ icon: Icon, label, accentColor, children, onDrop, isEmpty }:
   );
 }
 
+// Fallback color for safety (outside component to avoid recreation)
+const FALLBACK_COLOR = { bg: 'transparent', border: 'rgba(255,255,255,0.1)', text: '#e0e0e0', dot: '#e0e0e0' };
+const FALLBACK_META = { groupIndex: -1, groupLabel: '', isGroupStart: false, color: FALLBACK_COLOR };
+
 /* ═══════════════════════════════════════════════════
    Main Component
    ═══════════════════════════════════════════════════ */
@@ -649,7 +653,8 @@ export function ExcelPivotTable({ rows, customCols, instanceId = 'ep-default', f
                 </thead>
                 <tbody>
                   {pivotResult.dataRows.map((dr, ri) => {
-                    const meta = groupMeta[ri];
+                    const meta = groupMeta[ri] || FALLBACK_META;
+                    const mColor = meta.color || FALLBACK_COLOR;
                     const showGroupHeader = meta.isGroupStart && rowFields.length > 1;
                     return (
                       <Fragment key={ri}>
@@ -658,25 +663,25 @@ export function ExcelPivotTable({ rows, customCols, instanceId = 'ep-default', f
                           <tr>
                             <td colSpan={pivotResult.headers.length}
                               className="px-3 py-1.5"
-                              style={{ background: `${meta.color.border}15`, borderTop: `2px solid ${meta.color.border}` }}>
+                              style={{ background: `${mColor.border}15`, borderTop: `2px solid ${mColor.border}` }}>
                               <div className="flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full" style={{ background: meta.color.dot }} />
-                                <span className="text-[10px] font-bold tracking-wide" style={{ color: meta.color.text }}>
+                                <div className="w-1.5 h-1.5 rounded-full" style={{ background: mColor.dot }} />
+                                <span className="text-[10px] font-bold tracking-wide" style={{ color: mColor.text }}>
                                   {meta.groupLabel}
                                 </span>
-                                <div className="flex-1 h-px" style={{ background: `${meta.color.border}40` }} />
+                                <div className="flex-1 h-px" style={{ background: `${mColor.border}40` }} />
                               </div>
                             </td>
                           </tr>
                         )}
                         {/* Data row */}
                         <tr className={dr.isTotal ? 'border-t-2 border-white/10' : ''}
-                          style={!dr.isTotal ? { background: meta.color.bg } : { background: '#ffffff0a' }}>
+                          style={!dr.isTotal ? { background: mColor.bg } : { background: '#ffffff0a' }}>
                           <td className={`px-3 py-2 whitespace-nowrap sticky left-0 z-10 ${dr.isTotal ? 'text-white font-bold' : 'text-[#e0e0e0] font-medium'}`}
                             style={{
-                              background: dr.isTotal ? '#ffffff0a' : meta.color.bg,
+                              background: dr.isTotal ? '#ffffff0a' : mColor.bg,
                               backdropFilter: 'blur(8px)',
-                              borderLeft: !dr.isTotal && rowFields.length > 1 ? `3px solid ${meta.color.border}` : 'none',
+                              borderLeft: !dr.isTotal && rowFields.length > 1 ? `3px solid ${mColor.border}` : 'none',
                             }}>
                             {dr.isTotal && <span className="mr-1.5 text-[#4dd0e1]">&#931;</span>}
                             {dr.label}
@@ -685,7 +690,7 @@ export function ExcelPivotTable({ rows, customCols, instanceId = 'ep-default', f
                             <td key={vi} className={`text-center px-3 py-2 font-mono whitespace-nowrap ${
                               dr.isTotal ? 'font-bold text-white' : v > 0 ? 'text-[#e0e0e0]' : 'text-[#37474f]'
                             }`}
-                              style={!dr.isTotal ? { background: meta.color.bg } : {}}>
+                              style={!dr.isTotal ? { background: mColor.bg } : {}}>
                               {v.toLocaleString('id-ID')}
                             </td>
                           ))}
