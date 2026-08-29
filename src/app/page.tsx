@@ -62,6 +62,11 @@ export default function HomePage() {
     return <LoginForm />;
   }
 
+  // Safety: if activeTab is 'dashboard' (removed), redirect to monitoring
+  useEffect(() => {
+    if ((activeTab as string) === 'dashboard') setActiveTab('monitoring');
+  }, [activeTab, setActiveTab]);
+
   const isViewer = user.role === 'VIEWER';
   const activeProject = projects.find(p => p.id === activeProjectId);
 
