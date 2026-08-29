@@ -686,7 +686,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
   };
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-4 min-h-0">
       {/* Import Dialog */}
       {showImportDialog && (
         <div className="glass-card rounded-xl p-5">
@@ -1017,10 +1017,11 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
 
       {/* ═══ Data Table — VIRTUAL SCROLLING for 30k+ rows ═══ */}
       <div className="glass-card rounded-xl flex-1 flex flex-col overflow-hidden min-h-0">
-        <TableVirtuoso
-          data={displayRows}
-          style={{ flex: 1 }}
-          className="aero-scroll"
+        <div className="flex-1 min-h-0">
+          <TableVirtuoso
+            data={displayRows}
+            style={{ height: '100%' }}
+            className="aero-scroll"
           components={{
             Table: ({ style, ...props }) => (
               <table {...props} className="aero-table" style={style} />
@@ -1097,6 +1098,7 @@ export function MonitoringTable({ viewer = false }: { viewer?: boolean }) {
             </>);
           }}
         />
+        </div>
 
         {/* Info bar */}
         <div className="flex items-center justify-between p-3 border-t border-white/5">

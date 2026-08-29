@@ -88,8 +88,8 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen aero-bg flex flex-col relative">
-      <div className="relative z-10 flex flex-col min-h-screen">
+    <div className="h-screen aero-bg flex flex-col relative overflow-hidden">
+      <div className="relative z-10 flex flex-col h-full">
         {/* Top Header Bar */}
         <header className="glass-nav sticky top-0 z-50 px-4 py-3">
           <div className="flex items-center justify-between max-w-[1920px] mx-auto">
@@ -163,7 +163,7 @@ export default function HomePage() {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 p-4 max-w-[1920px] mx-auto w-full" style={{ minHeight: 'calc(100vh - 60px)' }}>
+        <main className="flex-1 p-4 max-w-[1920px] mx-auto w-full flex flex-col overflow-hidden">
           {activeTab === 'monitoring' && <MonitoringTable key={refreshKey} viewer={isViewer} />}
           {activeTab === 'logs' && <AuditLog key={refreshKey} />}
           {activeTab === 'pivot' && <PivotCharts key={refreshKey} />}
