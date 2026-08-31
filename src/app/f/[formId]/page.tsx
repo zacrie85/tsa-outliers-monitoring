@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { Send, CheckCircle2, AlertCircle, Loader2, ClipboardCopy, ExternalLink, Link2, Search } from 'lucide-react';
+import { Send, CheckCircle2, AlertCircle, Loader2, ClipboardCopy, ExternalLink, Link2, Search, Check } from 'lucide-react';
 
 interface FormField {
   key: string;
   label: string;
-  type: 'text' | 'number' | 'textarea';
+  type: 'text' | 'number' | 'textarea' | 'checkbox';
   required: boolean;
   placeholder?: string;
+  options?: string[];
 }
 
 interface ReferenceItem {
@@ -206,6 +207,15 @@ export default function PublicFormPage() {
             {/* ===== FORM FIELDS ===== */}
             {fields.map((field, idx) => {
               const isLast = idx === fields.length - 1;
+              // Parse selected checkbox values from comma-separated string
+              const checkedValues: string[] = (formData[field.key] || '').split(',').filter(Boolean);
+              const toggleCheckbox = (opt: string) => {
+                const current = (formData[field.key] || '').split(',').filter(Boolean);
+                const next = current.includes(opt)
+                  ? current.filter(v => v !== opt)
+                  : [...current, opt];
+                setFormData(prev => ({ ...prev, [field.key]: next.join(',') }));
+              };
               return (
                 <div key={field.key} className={isLast ? '' : 'border-b border-white/[0.06]'}>
                   <div className="px-6 py-4">
@@ -213,7 +223,24 @@ export default function PublicFormPage() {
                       <span className="text-xs font-medium text-[#e0e0e0]">{field.label}</span>
                       {field.required && <span className="text-[#ef5350] text-xs">*</span>}
                     </label>
-                    {field.type === 'textarea' ? (
+                    {field.type === 'checkbox' ? (
+                      <div className="space-y-2">
+                        {(field.options || []).filter(Boolean).map(opt => (
+                          <label key={opt} className="flex items-center gap-2.5 cursor-pointer group/chk">
+                            <div
+                              className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${checkedValues.includes(opt) ? 'bg-[#64b5f6] border-[#64b5f6]' : 'border-white/20 group-hover/chk:border-white/40'}`}
+                              onClick={() => toggleCheckbox(opt)}
+                            >
+                              {checkedValues.includes(opt) && <Check className="w-2.5 h-2.5 text-white" />}
+                            </div>
+                            <span className="text-sm text-[#b0bec5] group-hover/chk:text-[#e0e0e0] transition-colors">{opt}</span>
+                          </label>
+                        ))}
+                        {(field.options || []).filter(Boolean).length === 0 && (
+                          <p className="text-xs text-[#546e7a]">Tidak ada pilihan tersedia.</p>
+                        )}
+                      </div>
+                    ) : field.type === 'textarea' ? (
                       <textarea
                         required={field.required}
                         value={formData[field.key] || ''}

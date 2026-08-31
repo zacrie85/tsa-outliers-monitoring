@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useAppStore } from '@/store/app-store';
 import {
   FileText, Plus, Trash2, X, Link2, Copy, Check, Eye, EyeOff,
   Loader2, ClipboardList, ChevronDown, ChevronUp, GripVertical, Link as LinkIcon,
 } from 'lucide-react';
 
-interface FormField { key: string; label: string; type: 'text' | 'number' | 'textarea'; required: boolean; placeholder?: string; }
+interface FormField { key: string; label: string; type: 'text' | 'number' | 'textarea' | 'checkbox'; required: boolean; placeholder?: string; options?: string[]; }
 interface FormItem { id: string; title: string; description: string; fields: string; referenceColumn: string | null; referenceLabel: string | null; isActive: boolean; submissionCount: number; createdAt: string; }
 interface FormBuilderProps { customCols: Array<{ id: string; name: string; label: string }>; }
 
@@ -107,7 +107,7 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
   const getFormUrl = (id: string) => typeof window !== 'undefined' ? `${window.location.origin}/f/${id}` : '';
   const copyLink = async (id: string) => { try { await navigator.clipboard.writeText(getFormUrl(id)); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); } catch {} };
   const parsedFields = (j: string): FormField[] => { try { return JSON.parse(j); } catch { return []; } };
-  const getTypeLabel = (t: string) => t === 'number' ? 'Angka' : t === 'textarea' ? 'Paragraf' : 'Teks';
+  const getTypeLabel = (t: string) => t === 'number' ? 'Angka' : t === 'textarea' ? 'Paragraf' : t === 'checkbox' ? 'Ceklis' : 'Teks';
 
   if (!showPanel) {
     return (
@@ -201,7 +201,8 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
               <p className="text-[10px] text-[#78909c] font-medium mb-2 uppercase tracking-wider">Urutan dan Pengaturan Field</p>
               <div className="space-y-1 max-h-48 overflow-y-auto aero-scroll">
                 {editableFields.map((field, idx) => (
-                  <div key={field.key} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] group">
+                  <Fragment key={field.key}>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] group">
                     <GripVertical className="w-3 h-3 text-[#37474f]" />
                     <div className="flex flex-col gap-1 flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -211,12 +212,17 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
                         </label>
                       </div>
                       <div className="flex items-center gap-2">
-                        <select value={field.type} onChange={e => updateField(field.key, { type: e.target.value as 'text' | 'number' | 'textarea' })} className="px-2 py-0.5 glass-input rounded text-[10px]">
+                        <select value={field.type} onChange={e => { const newType = e.target.value as FormField['type']; updateField(field.key, { type: newType, ...(newType !== 'checkbox' ? {} : { options: field.options?.length ? field.options : [''] }) }); }} className="px-2 py-0.5 glass-input rounded text-[10px]">
                           <option value="text" style={{ background: '#1a1a2e' }}>Teks Pendek</option>
                           <option value="textarea" style={{ background: '#1a1a2e' }}>Paragraf</option>
                           <option value="number" style={{ background: '#1a1a2e' }}>Angka</option>
+                          <option value="checkbox" style={{ background: '#1a1a2e' }}>Ceklis</option>
                         </select>
-                        <input value={field.placeholder || ''} onChange={e => updateField(field.key, { placeholder: e.target.value })} placeholder="Placeholder (opsional)" className="flex-1 px-2 py-0.5 glass-input rounded text-[10px] min-w-0" />
+                        {field.type !== 'checkbox' ? (
+                          <input value={field.placeholder || ''} onChange={e => updateField(field.key, { placeholder: e.target.value })} placeholder="Placeholder (opsional)" className="flex-1 px-2 py-0.5 glass-input rounded text-[10px] min-w-0" />
+                        ) : (
+                          <span className="text-[10px] text-[#78909c] flex-1">Pilihan di bawah</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col gap-0.5 flex-shrink-0">
@@ -225,6 +231,40 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
                     </div>
                     <button onClick={() => setSelectedFields(prev => prev.filter(f => f.key !== field.key))} className="p-1 rounded hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] opacity-0 group-hover:opacity-100 transition-all"><X className="w-3 h-3" /></button>
                   </div>
+                  {/* Checkbox options editor */}
+                  {field.type === 'checkbox' && (
+                    <div className="ml-5 mr-8 mt-1.5 p-2.5 rounded-lg bg-white/[0.03] border border-[#ba68c8]/15 space-y-1.5">
+                      <p className="text-[9px] text-[#ce93d8] font-medium uppercase tracking-wider">Pilihan Jawaban</p>
+                      {(field.options || []).map((opt, oi) => (
+                        <div key={oi} className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded border border-[#546e7a] flex-shrink-0" />
+                          <input
+                            value={opt}
+                            onChange={e => {
+                              const newOpts = [...(field.options || [])];
+                              newOpts[oi] = e.target.value;
+                              updateField(field.key, { options: newOpts });
+                            }}
+                            placeholder={`Pilihan ${oi + 1}`}
+                            className="flex-1 px-2 py-1 glass-input rounded text-[10px] min-w-0"
+                          />
+                          <button
+                            onClick={() => updateField(field.key, { options: (field.options || []).filter((_, i) => i !== oi) })}
+                            className="p-0.5 rounded hover:bg-[#ef5350]/10 text-[#546e7a] hover:text-[#ef5350] flex-shrink-0"
+                          >
+                            <Trash2 className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => updateField(field.key, { options: [...(field.options || []), ''] })}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] text-[#ce93d8] hover:bg-[#ba68c8]/10 border border-[#ba68c8]/20 transition-all"
+                      >
+                        <Plus className="w-2.5 h-2.5" /> Tambah Pilihan
+                      </button>
+                    </div>
+                  )}
+                </Fragment>
                 ))}
               </div>
             </div>
@@ -299,11 +339,20 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
                     <p className="text-[10px] text-[#546e7a] uppercase tracking-wider font-medium mb-1.5">Field dalam form:</p>
                     <div className="space-y-1">
                       {fields.map((f, i) => (
-                        <div key={f.key} className="flex items-center gap-2 text-[11px] px-2 py-1 rounded bg-white/[0.02]">
-                          <span className="text-[#37474f] w-4 text-right">{i + 1}.</span>
-                          <span className="text-[#b0bec5] flex-1">{f.label}</span>
-                          <span className="text-[9px] text-[#546e7a]">{getTypeLabel(f.type)}</span>
-                          {f.required && <span className="text-[9px] text-[#ef5350]">*</span>}
+                        <div key={f.key} className="px-2 py-1 rounded bg-white/[0.02]">
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="text-[#37474f] w-4 text-right">{i + 1}.</span>
+                            <span className="text-[#b0bec5] flex-1">{f.label}</span>
+                            <span className="text-[9px] text-[#546e7a]">{getTypeLabel(f.type)}</span>
+                            {f.required && <span className="text-[9px] text-[#ef5350]">*</span>}
+                          </div>
+                          {f.type === 'checkbox' && f.options?.filter(Boolean).length ? (
+                            <div className="ml-6 mt-0.5 flex flex-wrap gap-1">
+                              {(f.options || []).filter(Boolean).map(opt => (
+                                <span key={opt} className="text-[9px] px-1.5 py-0.5 rounded bg-[#ba68c8]/10 text-[#ce93d8] border border-[#ba68c8]/15">{opt}</span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>
