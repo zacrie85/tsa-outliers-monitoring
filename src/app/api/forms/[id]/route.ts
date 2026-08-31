@@ -71,9 +71,16 @@ export async function PATCH(
     }
     const { id } = await params;
     const body = await request.json();
+    // fields must be JSON-stringified since the DB column is String type
+    const updateData: Record<string, any> = { ...body };
+    if (Array.isArray(updateData.fields)) {
+      updateData.fields = JSON.stringify(updateData.fields);
+    }
+    // Remove projectId from update data — it should not be changed
+    delete updateData.projectId;
     const form = await db.formConfig.update({
       where: { id },
-      data: body,
+      data: updateData,
     });
     return NextResponse.json({ success: true, form });
   } catch (error: any) {
