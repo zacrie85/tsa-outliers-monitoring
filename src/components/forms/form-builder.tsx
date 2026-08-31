@@ -5,6 +5,7 @@ import { useAppStore } from '@/store/app-store';
 import {
   FileText, Plus, Trash2, X, Link2, Copy, Check, Eye, EyeOff,
   Loader2, ClipboardList, ChevronDown, ChevronUp, GripVertical, Link as LinkIcon,
+  Pencil,
 } from 'lucide-react';
 
 interface FormField { key: string; label: string; type: 'text' | 'number' | 'textarea' | 'checkbox'; required: boolean; placeholder?: string; options?: string[]; }
@@ -16,6 +17,7 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
   const [showPanel, setShowPanel] = useState(false);
   const [forms, setForms] = useState<FormItem[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingFormId, setEditingFormId] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [selectedFields, setSelectedFields] = useState<FormField[]>([]);
@@ -57,7 +59,53 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
     });
   };
 
-  const resetCreate = () => { setFormTitle(''); setFormDesc(''); setSelectedFields([]); setRefColumn(''); };
+  const isEditing = editingFormId !== null;
+  const resetCreate = () => { setFormTitle(''); setFormDesc(''); setSelectedFields([]); setRefColumn(''); setEditingFormId(null); };
+
+  const handleEdit = (form: FormItem) => {
+    const fields = parsedFields(form.fields);
+    setFormTitle(form.title);
+    setFormDesc(form.description);
+    setRefColumn(form.referenceColumn || '');
+    // Re-include reference column in selectedFields so it shows as "ACUAN"
+    const refCol = form.referenceColumn
+      ? allColumns.find(c => c.key === form.referenceColumn)
+      : null;
+    const refField: FormField = refCol
+      ? { key: refCol.key, label: form.referenceLabel || refCol.label, type: 'text', required: false, placeholder: '' }
+      : null as unknown as FormField;
+    setSelectedFields(refField ? [refField, ...fields] : [...fields]);
+    setEditingFormId(form.id);
+    setShowCreate(true);
+    setExpandedId(null);
+  };
+
+  const handleUpdate = async () => {
+    if (!formTitle.trim() || editableFields.length === 0 || !editingFormId) return;
+    setCreating(true);
+    try {
+      const res = await fetch(`/api/forms/${editingFormId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formTitle.trim(),
+          description: formDesc.trim(),
+          fields: editableFields,
+          referenceColumn: refColumn || null,
+          referenceLabel: refColLabel || null,
+        }),
+      });
+      if (res.ok) {
+        resetCreate(); setShowCreate(false); fetchForms();
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Gagal update form' }));
+        alert('Gagal update form: ' + (err.error || 'Unknown error'));
+      }
+    } catch (e: any) {
+      alert('Error: ' + (e.message || 'Tidak dapat terhubung ke server'));
+    }
+    setCreating(false);
+  };
 
   const handleCreate = async () => {
     if (!formTitle.trim() || editableFields.length === 0) return;
@@ -124,14 +172,15 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <ClipboardList className="w-5 h-5 text-[#ba68c8]" />
-          <h3 className="text-sm font-semibold text-[#e3f2fd]">Form Online</h3>
+          <h3 className="text-sm font-semibold text-[#e3f2fd]">{isEditing ? 'Edit Form' : 'Form Online'}</h3>
           <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#ba68c8]/15 text-[#ce93d8] border border-[#ba68c8]/30">{forms.length} form</span>
+          {isEditing && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#ffb74d]/15 text-[#ffb74d] border border-[#ffb74d]/30">Mode Edit</span>}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => { setShowCreate(!showCreate); if (showCreate) resetCreate(); }}
+          <button onClick={() => { if (showCreate && isEditing) { resetCreate(); } else { resetCreate(); setShowCreate(!showCreate); } }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{ background: 'linear-gradient(135deg, rgba(186,104,200,0.25), rgba(186,104,200,0.1))', border: '1px solid rgba(186,104,200,0.35)', color: '#ce93d8' }}>
-            <Plus className="w-3.5 h-3.5" /> Buat Form Baru
+            style={{ background: showCreate && isEditing ? 'linear-gradient(135deg, rgba(255,183,77,0.25), rgba(255,183,77,0.1))' : 'linear-gradient(135deg, rgba(186,104,200,0.25), rgba(186,104,200,0.1))', border: showCreate && isEditing ? '1px solid rgba(255,183,77,0.35)' : '1px solid rgba(186,104,200,0.35)', color: showCreate && isEditing ? '#ffb74d' : '#ce93d8' }}>
+            {showCreate && isEditing ? <><Pencil className="w-3.5 h-3.5" /> Batal Edit</> : <><Plus className="w-3.5 h-3.5" /> Buat Form Baru</>}
           </button>
           <button onClick={() => setShowPanel(false)} className="text-[#546e7a] hover:text-white"><X className="w-4 h-4" /></button>
         </div>
@@ -272,11 +321,19 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
 
           <div className="flex justify-end gap-2 pt-2 border-t border-white/[0.06]">
             <button onClick={() => { setShowCreate(false); resetCreate(); }} className="px-4 py-2 glass-btn rounded-lg text-xs">Batal</button>
-            <button onClick={handleCreate} disabled={!formTitle.trim() || editableFields.length === 0 || creating}
-              className="flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-30"
-              style={{ background: 'linear-gradient(135deg, rgba(129,199,132,0.3), rgba(129,199,132,0.15))', border: '1px solid rgba(129,199,132,0.4)', color: '#81c784' }}>
-              {creating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Membuat...</> : <><FileText className="w-3.5 h-3.5" /> Buat Form</>}
-            </button>
+            {isEditing ? (
+              <button onClick={handleUpdate} disabled={!formTitle.trim() || editableFields.length === 0 || creating}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-30"
+                style={{ background: 'linear-gradient(135deg, rgba(255,183,77,0.3), rgba(255,183,77,0.15))', border: '1px solid rgba(255,183,77,0.4)', color: '#ffb74d' }}>
+                {creating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Mengupdate...</> : <><Pencil className="w-3.5 h-3.5" /> Update Form</>}
+              </button>
+            ) : (
+              <button onClick={handleCreate} disabled={!formTitle.trim() || editableFields.length === 0 || creating}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-30"
+                style={{ background: 'linear-gradient(135deg, rgba(129,199,132,0.3), rgba(129,199,132,0.15))', border: '1px solid rgba(129,199,132,0.4)', color: '#81c784' }}>
+                {creating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Membuat...</> : <><FileText className="w-3.5 h-3.5" /> Buat Form</>}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -310,6 +367,9 @@ export function FormBuilder({ customCols }: FormBuilderProps) {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button onClick={e => { e.stopPropagation(); copyLink(form.id); }} className="p-1.5 rounded-md hover:bg-[#64b5f6]/15 text-[#546e7a] hover:text-[#64b5f6] transition-all" title="Salin link">
                       {copiedId === form.id ? <Check className="w-3.5 h-3.5 text-[#81c784]" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); handleEdit(form); }} className="p-1.5 rounded-md hover:bg-[#ffb74d]/15 text-[#546e7a] hover:text-[#ffb74d] transition-all" title="Edit form">
+                      <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button onClick={e => { e.stopPropagation(); handleToggleActive(form); }} className="p-1.5 rounded-md hover:bg-white/10 text-[#546e7a] hover:text-white transition-all">
                       {form.isActive ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
